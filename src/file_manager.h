@@ -10,3 +10,4 @@ FileInfo* getFileList();
 void loadFile(const char* filename);
 void saveCurrentFile();
 void createNewFile();
+void updateFileTitle(const char* filename, const char* newTitle);

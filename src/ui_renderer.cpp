@@ -221,7 +221,7 @@ void drawFileBrowser(GfxRenderer& renderer, HalGPIO& gpio) {
 
   // Footer: minimal hint
   drawClippedText(renderer, FONT_SMALL, 10, sh - 18,
-                  "Enter:Open  Ctrl+N:New  F2:Rename  Esc:Back", 0, tc);
+                  "Enter:Open  Ctrl+N:New  F2:Title  Esc:Back", 0, tc);
 
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }
@@ -321,26 +321,21 @@ void drawRenameScreen(GfxRenderer& renderer) {
   renderer.clearScreen();
   int sw = renderer.getScreenWidth();
 
-  drawClippedText(renderer, FONT_UI, 10, 20, "Rename File", 0, true, EpdFontFamily::BOLD);
+  drawClippedText(renderer, FONT_UI, 10, 20, "Edit Title", 0, true, EpdFontFamily::BOLD);
   clippedLine(renderer, 5, 42, sw - 5, 42);
 
-  FileInfo* files = getFileList();
-  drawClippedText(renderer, FONT_SMALL, 20, 60, "Current:");
-  drawClippedText(renderer, FONT_UI, 20, 78, files[selectedFileIndex].filename, sw - 40);
-
-  drawClippedText(renderer, FONT_SMALL, 20, 110, "New name:");
-  renderer.drawRect(15, 128, sw - 30, 30);
-  drawClippedText(renderer, FONT_UI, 20, 132, renameBuffer, sw - 50);
+  drawClippedText(renderer, FONT_SMALL, 20, 60, "Note title:");
+  renderer.drawRect(15, 78, sw - 30, 30);
+  drawClippedText(renderer, FONT_UI, 20, 82, renameBuffer, sw - 50);
 
   // Cursor
   int cursorX = 20 + renderer.getTextAdvanceX(FONT_UI, renameBuffer);
   int cursorW = renderer.getSpaceWidth(FONT_UI);
   if (cursorW < 2) cursorW = 8;
   if (cursorX + cursorW < sw)
-    renderer.fillRect(cursorX, 132, cursorW, 20, true);
+    renderer.fillRect(cursorX, 82, cursorW, 20, true);
 
-  drawClippedText(renderer, FONT_SMALL, 20, 170, ".txt will be added automatically");
-  drawClippedText(renderer, FONT_SMALL, 20, 200, "Enter: Confirm   Esc: Cancel");
+  drawClippedText(renderer, FONT_SMALL, 20, 130, "Enter: Confirm   Esc: Cancel");
 
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }
@@ -356,9 +351,9 @@ void drawSettingsMenu(GfxRenderer& renderer, HalGPIO& gpio) {
   drawBattery(renderer, gpio);
   clippedLine(renderer, 5, 32, sw - 5, 32);
 
-  // Setting items: Orientation, Dark Mode, Back, Bluetooth, Clear Paired
-  static const char* labels[] = {"Orientation", "Dark Mode", "Back", "Bluetooth", "Clear Paired"};
-  for (int i = 0; i < 5; i++) {
+  // Setting items: Orientation, Dark Mode, Bluetooth, Clear Paired
+  static const char* labels[] = {"Orientation", "Dark Mode", "Bluetooth", "Clear Paired"};
+  for (int i = 0; i < 4; i++) {
     int yPos = 50 + (i * 45);
     bool sel = (i == settingsSelection);
 
@@ -380,7 +375,7 @@ void drawSettingsMenu(GfxRenderer& renderer, HalGPIO& gpio) {
       }
     } else if (i == 1) {
       strcpy(val, darkMode ? "On" : "Off");
-    } else if (i == 4) {
+    } else if (i == 3) {
       std::string storedAddr, storedName;
       if (getStoredDevice(storedAddr, storedName)) {
         snprintf(val, sizeof(val), "%s", storedName.c_str());

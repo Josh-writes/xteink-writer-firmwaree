@@ -2,7 +2,7 @@
 #include <HalDisplay.h>
 #include <HalGPIO.h>
 #include <GfxRenderer.h>
-#include "esp_pm.h"
+#include <esp_pm.h>
 
 #include "config.h"
 #include "ble_keyboard.h"
@@ -111,7 +111,7 @@ void setup() {
   // the scheduler and no other tasks are runnable.  BLE stays alive, wake
   // latency is <1ms — invisible to the user.
   {
-    esp_pm_config_t pm_config = {
+    esp_pm_config_esp32c3_t pm_config = {
       .max_freq_mhz      = 80,   // Never exceed 80MHz
       .min_freq_mhz      = 40,   // Drop to 40MHz when idle
       .light_sleep_enable = true

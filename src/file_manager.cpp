@@ -133,19 +133,32 @@ void loadFile(const char* filename) {
   buf[bytesRead] = '\0';
   file.close();
 
-  editorLoadBuffer(bytesRead);
   editorSetCurrentFile(filename);
 
-  // Extract title from first line
+  // Split: first line = title, remainder after blank line = body
   char title[MAX_TITLE_LEN];
   char* newline = strchr(buf, '\n');
-  if (newline && (newline - buf) < MAX_TITLE_LEN - 1 && (newline - buf) > 0) {
-    int tLen = newline - buf;
+  if (newline && newline != buf) {
+    int tLen = (int)(newline - buf);
+    if (tLen > MAX_TITLE_LEN - 1) tLen = MAX_TITLE_LEN - 1;
     strncpy(title, buf, tLen);
+    // Strip any trailing \r
+    while (tLen > 0 && title[tLen - 1] == '\r') tLen--;
     title[tLen] = '\0';
+
+    // Skip past title line + blank separator line(s)
+    char* body = newline + 1;
+    while (*body == '\n' || *body == '\r') body++;
+
+    size_t bodyLen = bytesRead - (size_t)(body - buf);
+    memmove(buf, body, bodyLen);
+    buf[bodyLen] = '\0';
+    editorLoadBuffer(bodyLen);
   } else {
-    strncpy(title, filename, MAX_TITLE_LEN - 1);
+    // Old-format file or empty — treat entire content as body, no title
+    strncpy(title, "Untitled", MAX_TITLE_LEN - 1);
     title[MAX_TITLE_LEN - 1] = '\0';
+    editorLoadBuffer(bytesRead);
   }
   editorSetCurrentTitle(title);
   editorSetUnsavedChanges(false);
@@ -168,6 +181,9 @@ void saveCurrentFile() {
     return;
   }
 
+  const char* title = editorGetCurrentTitle();
+  file.write((const uint8_t*)title, strlen(title));
+  file.write((const uint8_t*)"\n\n", 2);
   file.write((const uint8_t*)editorGetBuffer(), editorGetLength());
   file.close();
 
@@ -211,6 +227,44 @@ void createNewFile() {
   editorSetCurrentTitle("Untitled");
   editorSetUnsavedChanges(true);
 
-  currentState = UIState::TEXT_EDITOR;
+  // State transition is handled by the caller (goes to title edit first)
   Serial.printf("New file: %s\n", filename);
+}
+
+// Update just the title of a file on disk without touching the body.
+// Uses the editor buffer temporarily — only call this from the file browser
+// (no active edit session).
+void updateFileTitle(const char* filename, const char* newTitle) {
+  char path[320], tmpPath[330];
+  snprintf(path, sizeof(path), "/notes/%s", filename);
+  snprintf(tmpPath, sizeof(tmpPath), "%s.tmp", path);
+
+  // Read the existing file into the editor buffer
+  auto rFile = SdMan.open(path, O_RDONLY);
+  if (!rFile) return;
+  char* buf = editorGetBuffer();
+  int readResult = rFile.read(buf, TEXT_BUFFER_SIZE - 1);
+  rFile.close();
+  if (readResult < 0) readResult = 0;
+  buf[readResult] = '\0';
+
+  // Find start of body (skip first line + blank separator)
+  char* body = strchr(buf, '\n');
+  if (body) {
+    while (*body == '\n' || *body == '\r') body++;
+  } else {
+    body = buf + readResult; // no body
+  }
+
+  // Write new file: new title + separator + existing body
+  auto wFile = SdMan.open(tmpPath, O_WRONLY | O_CREAT | O_TRUNC);
+  if (!wFile) return;
+  wFile.write((const uint8_t*)newTitle, strlen(newTitle));
+  wFile.write((const uint8_t*)"\n\n", 2);
+  wFile.write((const uint8_t*)body, strlen(body));
+  wFile.close();
+
+  SdMan.remove(path);
+  SdMan.rename(tmpPath, path);
+  refreshFileList();
 }
