@@ -2,6 +2,7 @@
 #include <HalDisplay.h>
 #include <HalGPIO.h>
 #include <GfxRenderer.h>
+#include "esp_pm.h"
 
 #include "config.h"
 #include "ble_keyboard.h"
@@ -91,6 +92,9 @@ void setup() {
   delay(500);
   Serial.println("MicroSlate starting...");
 
+  // Reduce CPU clock — 80MHz is plenty for this workload, saves ~30% active power
+  setCpuFrequencyMhz(80);
+
   gpio.begin();
   display.begin();
 
@@ -101,6 +105,24 @@ void setup() {
   inputSetup();
   fileManagerSetup();
   bleSetup();
+
+  // Enable automatic light sleep between loop iterations.
+  // FreeRTOS tickless idle will put the CPU to sleep whenever delay() yields
+  // the scheduler and no other tasks are runnable.  BLE stays alive, wake
+  // latency is <1ms — invisible to the user.
+  {
+    esp_pm_config_t pm_config = {
+      .max_freq_mhz      = 80,   // Never exceed 80MHz
+      .min_freq_mhz      = 40,   // Drop to 40MHz when idle
+      .light_sleep_enable = true
+    };
+    esp_err_t err = esp_pm_configure(&pm_config);
+    if (err == ESP_OK) {
+      Serial.println("[PM] Light sleep enabled (80/40MHz)");
+    } else {
+      Serial.printf("[PM] Light sleep config failed: %d — running at 80MHz\n", err);
+    }
+  }
 
   // Initialize auto-reconnect to enabled by default
   autoReconnectEnabled = true;
