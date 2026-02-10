@@ -14,6 +14,7 @@
 extern bool autoReconnectEnabled;
 extern bool darkMode;
 extern bool cleanMode;
+extern bool deleteConfirmPending;
 
 // External functions
 bool getStoredDevice(std::string& address, std::string& name);
@@ -190,26 +191,28 @@ void drawFileBrowser(GfxRenderer& renderer, HalGPIO& gpio) {
   if (darkMode) clippedFillRect(renderer, 0, 0, sw, sh, true);
 
   // Header
-  drawClippedText(renderer, FONT_UI, 10, 10, "Notes", 0, tc, EpdFontFamily::BOLD);
+  drawClippedText(renderer, FONT_SMALL, 10, 5, "Notes", 0, tc, EpdFontFamily::BOLD);
   drawBattery(renderer, gpio);
   clippedLine(renderer, 5, 32, sw - 5, 32);
 
   int fc = getFileCount();
   int lineH = 30;
-  int maxVisible = (sh - 70) / lineH;
+  int listTop = 42;
+  int footerH = 28;  // one line of FONT_SMALL with safe bottom margin
+  int maxVisible = (sh - listTop - footerH) / lineH;
   int startIdx = 0;
   if (fc > maxVisible && selectedFileIndex >= maxVisible) {
     startIdx = selectedFileIndex - maxVisible + 1;
   }
 
   if (fc == 0) {
-    drawClippedText(renderer, FONT_UI, 20, 60, "No notes yet.", 0, tc);
-    drawClippedText(renderer, FONT_SMALL, 20, 82, "Press Ctrl+N to create one.", 0, tc);
+    drawClippedText(renderer, FONT_UI, 20, listTop + 14, "No notes yet.", 0, tc);
+    drawClippedText(renderer, FONT_SMALL, 20, listTop + 36, "Press Ctrl+N to create one.", 0, tc);
   }
 
   FileInfo* files = getFileList();
   for (int i = startIdx; i < fc && (i - startIdx) < maxVisible; i++) {
-    int yPos = 42 + (i - startIdx) * lineH;
+    int yPos = listTop + (i - startIdx) * lineH;
 
     if (i == selectedFileIndex) {
       clippedFillRect(renderer, 5, yPos - 3, sw - 10, lineH - 1, tc);
@@ -219,9 +222,14 @@ void drawFileBrowser(GfxRenderer& renderer, HalGPIO& gpio) {
     }
   }
 
-  // Footer: minimal hint
-  drawClippedText(renderer, FONT_SMALL, 10, sh - 18,
-                  "Enter:Open  Ctrl+N:New  F2:Title  Esc:Back", 0, tc);
+  // Footer
+  clippedLine(renderer, 5, sh - footerH - 2, sw - 5, sh - footerH - 2);
+  if (deleteConfirmPending && fc > 0) {
+    drawClippedText(renderer, FONT_SMALL, 10, sh - footerH + 4, "Delete? Enter:Yes  Esc:No", 0, tc);
+  } else {
+    drawClippedText(renderer, FONT_SMALL, 10, sh - footerH + 4,
+                    "Ctrl+T:Title  Ctrl+D:Delete", 0, tc);
+  }
 
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }
@@ -249,7 +257,7 @@ void drawTextEditor(GfxRenderer& renderer, HalGPIO& gpio) {
       strncpy(headerBuf, title, sizeof(headerBuf) - 1);
       headerBuf[sizeof(headerBuf) - 1] = '\0';
     }
-    drawClippedText(renderer, FONT_UI, 10, 10, headerBuf, sw - 80, tc, EpdFontFamily::BOLD);
+    drawClippedText(renderer, FONT_SMALL, 10, 5, headerBuf, sw - 60, tc, EpdFontFamily::BOLD);
     drawBattery(renderer, gpio);
     clippedLine(renderer, 5, 32, sw - 5, 32);
     textAreaTop = 38;
@@ -321,21 +329,21 @@ void drawRenameScreen(GfxRenderer& renderer) {
   renderer.clearScreen();
   int sw = renderer.getScreenWidth();
 
-  drawClippedText(renderer, FONT_UI, 10, 20, "Edit Title", 0, true, EpdFontFamily::BOLD);
-  clippedLine(renderer, 5, 42, sw - 5, 42);
+  drawClippedText(renderer, FONT_SMALL, 10, 5, "Edit Title", 0, true, EpdFontFamily::BOLD);
+  clippedLine(renderer, 5, 32, sw - 5, 32);
 
-  drawClippedText(renderer, FONT_SMALL, 20, 60, "Note title:");
-  renderer.drawRect(15, 78, sw - 30, 30);
-  drawClippedText(renderer, FONT_UI, 20, 82, renameBuffer, sw - 50);
+  drawClippedText(renderer, FONT_SMALL, 20, 42, "Note title:");
+  renderer.drawRect(15, 58, sw - 30, 30);
+  drawClippedText(renderer, FONT_UI, 20, 62, renameBuffer, sw - 50);
 
   // Cursor
   int cursorX = 20 + renderer.getTextAdvanceX(FONT_UI, renameBuffer);
   int cursorW = renderer.getSpaceWidth(FONT_UI);
   if (cursorW < 2) cursorW = 8;
   if (cursorX + cursorW < sw)
-    renderer.fillRect(cursorX, 82, cursorW, 20, true);
+    renderer.fillRect(cursorX, 62, cursorW, 20, true);
 
-  drawClippedText(renderer, FONT_SMALL, 20, 130, "Enter: Confirm   Esc: Cancel");
+  drawClippedText(renderer, FONT_SMALL, 20, 110, "Enter: Confirm   Esc: Cancel");
 
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }
@@ -347,7 +355,7 @@ void drawSettingsMenu(GfxRenderer& renderer, HalGPIO& gpio) {
 
   if (darkMode) clippedFillRect(renderer, 0, 0, sw, sh, true);
 
-  drawClippedText(renderer, FONT_UI, 10, 10, "Settings", 0, !darkMode, EpdFontFamily::BOLD);
+  drawClippedText(renderer, FONT_SMALL, 10, 5, "Settings", 0, !darkMode, EpdFontFamily::BOLD);
   drawBattery(renderer, gpio);
   clippedLine(renderer, 5, 32, sw - 5, 32);
 
@@ -407,7 +415,7 @@ void drawBluetoothSettings(GfxRenderer& renderer, HalGPIO& gpio) {
   renderer.clearScreen();
 
   // Header
-  drawClippedText(renderer, FONT_UI, 10, 10, "Bluetooth Devices", 0, true, EpdFontFamily::BOLD);
+  drawClippedText(renderer, FONT_SMALL, 10, 5, "Bluetooth Devices", 0, true, EpdFontFamily::BOLD);
   drawBattery(renderer, gpio);
   clippedLine(renderer, 5, 32, sw - 5, 32);
 

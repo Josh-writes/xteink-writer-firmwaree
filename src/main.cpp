@@ -47,6 +47,7 @@ int renameBufferLen = 0;
 // UI mode flags
 bool darkMode = false;
 bool cleanMode = false;
+bool deleteConfirmPending = false;
 
 // --- Screen update ---
 static void updateScreen() {

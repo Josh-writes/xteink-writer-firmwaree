@@ -268,3 +268,11 @@ void updateFileTitle(const char* filename, const char* newTitle) {
   SdMan.rename(tmpPath, path);
   refreshFileList();
 }
+
+void deleteFile(const char* filename) {
+  char path[320];
+  snprintf(path, sizeof(path), "/notes/%s", filename);
+  SdMan.remove(path);
+  refreshFileList();
+  Serial.printf("Deleted: %s\n", filename);
+}

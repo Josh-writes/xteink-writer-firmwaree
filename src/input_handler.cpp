@@ -10,6 +10,7 @@
 extern bool autoReconnectEnabled;
 extern bool darkMode;
 extern bool cleanMode;
+extern bool deleteConfirmPending;
 
 // External functions
 void storePairedDevice(const std::string& address, const std::string& name);
@@ -31,6 +32,9 @@ static bool capsLockOn = false;
 
 // Where to return after title edit is confirmed or cancelled
 static UIState renameReturnState = UIState::FILE_BROWSER;
+
+// Forward declaration
+static void openTitleEdit(const char* currentTitle, UIState returnTo);
 
 // --- Shared UI state (defined in main.cpp) ---
 extern UIState currentState;
@@ -128,11 +132,6 @@ static void handleEditorKey(uint8_t keyCode, uint8_t modifiers) {
       screenDirty = true;
       return;
     }
-    if (keyCode == HID_KEY_N) {
-      createNewFile();
-      openTitleEdit("Untitled", UIState::TEXT_EDITOR);
-      return;
-    }
     if (keyCode == HID_KEY_Z) {
       cleanMode = !cleanMode;
       screenDirty = true;
@@ -141,8 +140,8 @@ static void handleEditorKey(uint8_t keyCode, uint8_t modifiers) {
     return;
   }
 
-  // F2 = edit title
-  if (keyCode == HID_KEY_F2) {
+  // Ctrl+T = edit title
+  if (isCtrl(modifiers) && keyCode == HID_KEY_T) {
     openTitleEdit(editorGetCurrentTitle(), UIState::TEXT_EDITOR);
     return;
   }
@@ -263,6 +262,21 @@ static void dispatchEvent(const KeyEvent& event) {
 
     case UIState::FILE_BROWSER: {
       int fc = getFileCount();
+
+      // Delete confirmation pending — Enter confirms, anything else cancels
+      if (deleteConfirmPending) {
+        if (event.keyCode == HID_KEY_ENTER && fc > 0) {
+          FileInfo* files = getFileList();
+          deleteFile(files[selectedFileIndex].filename);
+          int newFc = getFileCount();
+          if (selectedFileIndex >= newFc) selectedFileIndex = newFc - 1;
+          if (selectedFileIndex < 0) selectedFileIndex = 0;
+        }
+        deleteConfirmPending = false;
+        screenDirty = true;
+        break;
+      }
+
       if (event.keyCode == HID_KEY_DOWN && fc > 0) {
         selectedFileIndex = (selectedFileIndex + 1) % fc;
         screenDirty = true;
@@ -273,13 +287,15 @@ static void dispatchEvent(const KeyEvent& event) {
         FileInfo* files = getFileList();
         loadFile(files[selectedFileIndex].filename);
         screenDirty = true;
-      } else if (isCtrl(event.modifiers) && event.keyCode == HID_KEY_N) {
-        createNewFile();
-        openTitleEdit("Untitled", UIState::TEXT_EDITOR);
-      } else if (event.keyCode == HID_KEY_F2) {
+      } else if (isCtrl(event.modifiers) && event.keyCode == HID_KEY_T) {
         if (fc > 0) {
           FileInfo* files = getFileList();
           openTitleEdit(files[selectedFileIndex].title, UIState::FILE_BROWSER);
+        }
+      } else if (isCtrl(event.modifiers) && event.keyCode == HID_KEY_D) {
+        if (fc > 0) {
+          deleteConfirmPending = true;
+          screenDirty = true;
         }
       } else if (event.keyCode == HID_KEY_ESCAPE) {
         currentState = UIState::MAIN_MENU;
