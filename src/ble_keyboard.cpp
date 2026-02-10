@@ -221,15 +221,26 @@ static bool setupHidConnection() {
   // Find input report via Report Reference descriptor (type=1 means Input)
   pInputReportChar = nullptr;
   std::vector<NimBLERemoteCharacteristic*>* chars = pRemoteService->getCharacteristics();
+  Serial.printf("[BLE] Found %d characteristics in HID service\n", chars->size());
+
   for (auto& chr : *chars) {
+    Serial.printf("[BLE]   Char UUID: %s, canNotify=%d\n",
+                  chr->getUUID().toString().c_str(), chr->canNotify());
+
     if (chr->getUUID() != reportUUID) continue;
+
     std::vector<NimBLERemoteDescriptor*>* descs = chr->getDescriptors();
     for (auto& d : *descs) {
       if (d->getUUID() == NimBLEUUID("2908")) {
         std::string refData = d->readValue();
-        if (refData.length() >= 2 && (uint8_t)refData[1] == 1) {
-          pInputReportChar = chr;
-          break;
+        if (refData.length() >= 2) {
+          Serial.printf("[BLE]     Report ref: ID=%d Type=%d\n",
+                        (uint8_t)refData[0], (uint8_t)refData[1]);
+          if ((uint8_t)refData[1] == 1) {
+            pInputReportChar = chr;
+            Serial.println("[BLE]     -> Selected as input report");
+            break;
+          }
         }
       }
     }
@@ -238,9 +249,11 @@ static bool setupHidConnection() {
 
   // Fallback: any report char with notify
   if (!pInputReportChar) {
+    Serial.println("[BLE] No report ref found, trying any notifiable report char");
     for (auto& chr : *chars) {
       if (chr->getUUID() == reportUUID && chr->canNotify()) {
         pInputReportChar = chr;
+        Serial.println("[BLE] Selected first notifiable report char");
         break;
       }
     }
@@ -248,7 +261,11 @@ static bool setupHidConnection() {
 
   // Fallback: boot keyboard input
   if (!pInputReportChar) {
+    Serial.println("[BLE] No report char found, trying boot keyboard input");
     pInputReportChar = pRemoteService->getCharacteristic(bootKeyboardInUUID);
+    if (pInputReportChar) {
+      Serial.println("[BLE] Using boot keyboard input");
+    }
   }
 
   if (!pInputReportChar) {
@@ -256,10 +273,12 @@ static bool setupHidConnection() {
     return false;
   }
 
+  Serial.printf("[BLE] Subscribing to char %s\n", pInputReportChar->getUUID().toString().c_str());
   if (!pInputReportChar->subscribe(true, onKeyboardNotify)) {
     Serial.println("[BLE] Subscribe failed");
     return false;
   }
+  Serial.println("[BLE] Subscribe succeeded");
 
   // Set report protocol mode
   NimBLERemoteCharacteristic* pProto = pRemoteService->getCharacteristic(protocolModeUUID);
