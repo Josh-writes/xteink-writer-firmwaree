@@ -195,8 +195,16 @@ static void handleRenameKey(uint8_t keyCode, uint8_t modifiers) {
   if (keyCode == HID_KEY_ENTER) {
     if (renameBufferLen > 0) {
       if (renameReturnState == UIState::TEXT_EDITOR) {
-        // Updating title of the currently open file
         editorSetCurrentTitle(renameBuffer);
+        if (editorGetCurrentFile()[0] == '\0') {
+          // New file — derive filename from title
+          char filename[MAX_FILENAME_LEN];
+          deriveUniqueFilename(renameBuffer, filename, MAX_FILENAME_LEN);
+          editorSetCurrentFile(filename);
+        } else {
+          // Existing file — rename on disk to match new title
+          updateFileTitle(editorGetCurrentFile(), renameBuffer);
+        }
         editorSetUnsavedChanges(true);
         saveCurrentFile();
       } else {

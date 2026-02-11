@@ -11,55 +11,63 @@ static int fileCount = 0;
 // Shared state
 extern UIState currentState;
 
-// Read the first non-empty line as a title
-static void readTitleFromFile(const char* path, char* titleOut, int maxLen) {
-  auto file = SdMan.open(path, O_RDONLY);
-  if (!file) {
-    strncpy(titleOut, "Untitled", maxLen - 1);
-    titleOut[maxLen - 1] = '\0';
-    return;
-  }
-
-  // Read a small chunk to find the first non-empty line
-  char chunk[256];
-  int bytesRead = file.read(chunk, sizeof(chunk) - 1);
-  if (bytesRead > 0) {
-    chunk[bytesRead] = '\0';
-
-    // Scan for first non-empty line
-    int start = 0;
-    while (start < bytesRead && (chunk[start] == '\n' || chunk[start] == '\r'))
-      start++;
-
-    if (start < bytesRead) {
-      // Find end of line
-      int end = start;
-      while (end < bytesRead && chunk[end] != '\n' && chunk[end] != '\r')
-        end++;
-
-      int len = end - start;
-      // Trim trailing spaces
-      while (len > 0 && chunk[start + len - 1] == ' ')
-        len--;
-
-      if (len > 0) {
-        if (len > maxLen - 4) {
-          strncpy(titleOut, chunk + start, maxLen - 4);
-          titleOut[maxLen - 4] = '\0';
-          strcat(titleOut, "...");
-        } else {
-          strncpy(titleOut, chunk + start, len);
-          titleOut[len] = '\0';
-        }
-        file.close();
-        return;
-      }
+// Convert filename to a readable display title.
+// "my_note_2.txt" -> "My Note 2"
+static void filenameToTitle(const char* filename, char* out, int maxLen) {
+  int j = 0;
+  bool capitalizeNext = true;
+  for (int i = 0; filename[i] != '\0' && filename[i] != '.' && j < maxLen - 1; i++) {
+    char c = filename[i];
+    if (c == '_') {
+      if (j > 0) out[j++] = ' ';
+      capitalizeNext = true;
+    } else {
+      if (capitalizeNext && c >= 'a' && c <= 'z') c -= 32;
+      capitalizeNext = false;
+      out[j++] = c;
     }
   }
+  out[j] = '\0';
+  if (j == 0) strncpy(out, "Untitled", maxLen - 1);
+}
 
-  file.close();
-  strncpy(titleOut, "Untitled", maxLen - 1);
-  titleOut[maxLen - 1] = '\0';
+// Convert a title to a valid FAT filename (lowercase, spaces->underscores,
+// non-alphanumeric stripped, ".txt" appended).
+static void titleToFilename(const char* title, char* out, int maxLen) {
+  int maxBase = maxLen - 5; // room for ".txt" + null
+  int j = 0;
+  for (int i = 0; title[i] != '\0' && j < maxBase; i++) {
+    char c = title[i];
+    if (c >= 'A' && c <= 'Z') c += 32;
+    if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
+      out[j++] = c;
+    } else if (c == ' ' || c == '_' || c == '-') {
+      if (j > 0 && out[j - 1] != '_') out[j++] = '_';
+    }
+  }
+  while (j > 0 && out[j - 1] == '_') j--;
+  if (j == 0) { strncpy(out, "note", maxLen - 1); j = 4; }
+  strcpy(out + j, ".txt");
+}
+
+// Derive a unique /notes/ filename from a title, handling collisions with _2, _3 suffix.
+void deriveUniqueFilename(const char* title, char* out, int maxLen) {
+  titleToFilename(title, out, maxLen);
+
+  char path[320];
+  snprintf(path, sizeof(path), "/notes/%s", out);
+  if (!SdMan.exists(path)) return;
+
+  // Collision — strip .txt, try _2, _3 ...
+  char base[MAX_FILENAME_LEN];
+  strncpy(base, out, maxLen - 1);
+  base[strlen(base) - 4] = '\0';
+
+  int suffix = 2;
+  while (SdMan.exists(path) && suffix <= 99) {
+    snprintf(out, maxLen, "%s_%d.txt", base, suffix++);
+    snprintf(path, sizeof(path), "/notes/%s", out);
+  }
 }
 
 void fileManagerSetup() {
@@ -101,9 +109,7 @@ void refreshFileList() {
       strncpy(fileList[fileCount].filename, name, MAX_FILENAME_LEN - 1);
       fileList[fileCount].filename[MAX_FILENAME_LEN - 1] = '\0';
 
-      char fullPath[320];
-      snprintf(fullPath, sizeof(fullPath), "/notes/%s", name);
-      readTitleFromFile(fullPath, fileList[fileCount].title, MAX_TITLE_LEN);
+      filenameToTitle(name, fileList[fileCount].title, MAX_TITLE_LEN);
       fileList[fileCount].modTime = 0;
       fileCount++;
     }
@@ -134,32 +140,11 @@ void loadFile(const char* filename) {
   file.close();
 
   editorSetCurrentFile(filename);
+  editorLoadBuffer(bytesRead);
 
-  // Split: first line = title, remainder after blank line = body
+  // Title comes from the filename, not the file content
   char title[MAX_TITLE_LEN];
-  char* newline = strchr(buf, '\n');
-  if (newline && newline != buf) {
-    int tLen = (int)(newline - buf);
-    if (tLen > MAX_TITLE_LEN - 1) tLen = MAX_TITLE_LEN - 1;
-    strncpy(title, buf, tLen);
-    // Strip any trailing \r
-    while (tLen > 0 && title[tLen - 1] == '\r') tLen--;
-    title[tLen] = '\0';
-
-    // Skip past title line + blank separator line(s)
-    char* body = newline + 1;
-    while (*body == '\n' || *body == '\r') body++;
-
-    size_t bodyLen = bytesRead - (size_t)(body - buf);
-    memmove(buf, body, bodyLen);
-    buf[bodyLen] = '\0';
-    editorLoadBuffer(bodyLen);
-  } else {
-    // Old-format file or empty — treat entire content as body, no title
-    strncpy(title, "Untitled", MAX_TITLE_LEN - 1);
-    title[MAX_TITLE_LEN - 1] = '\0';
-    editorLoadBuffer(bytesRead);
-  }
+  filenameToTitle(filename, title, MAX_TITLE_LEN);
   editorSetCurrentTitle(title);
   editorSetUnsavedChanges(false);
 
@@ -181,9 +166,7 @@ void saveCurrentFile() {
     return;
   }
 
-  const char* title = editorGetCurrentTitle();
-  file.write((const uint8_t*)title, strlen(title));
-  file.write((const uint8_t*)"\n\n", 2);
+  // File contains only the body — title is carried by the filename
   file.write((const uint8_t*)editorGetBuffer(), editorGetLength());
   file.close();
 
@@ -196,120 +179,23 @@ void saveCurrentFile() {
 }
 
 void createNewFile() {
-  // Read counter
-  int counter = 0;
-  auto cf = SdMan.open("/notes/.counter", O_RDONLY);
-  if (cf) {
-    char buf[16];
-    int len = cf.read(buf, sizeof(buf) - 1);
-    if (len > 0) {
-      buf[len] = '\0';
-      counter = atoi(buf);
-    }
-    cf.close();
-  }
-  counter++;
-
-  // Save counter
-  auto wf = SdMan.open("/notes/.counter", O_WRONLY | O_CREAT | O_TRUNC);
-  if (wf) {
-    char buf[16];
-    snprintf(buf, sizeof(buf), "%d", counter);
-    wf.write(buf, strlen(buf));
-    wf.close();
-  }
-
-  char filename[MAX_FILENAME_LEN];
-  snprintf(filename, sizeof(filename), "note_%d_%lu.txt", counter, millis());
-
   editorClear();
-  editorSetCurrentFile(filename);
+  editorSetCurrentFile("");       // filename derived from title when user confirms
   editorSetCurrentTitle("Untitled");
   editorSetUnsavedChanges(true);
-
-  // State transition is handled by the caller (goes to title edit first)
-  DBG_PRINTF("New file: %s\n", filename);
 }
 
-// Convert a title to a valid FAT filename (lowercase, spaces→underscores,
-// non-alphanumeric stripped, ".txt" appended).
-static void titleToFilename(const char* title, char* out, int maxLen) {
-  int maxBase = maxLen - 5; // room for ".txt" + null
-  int j = 0;
-  for (int i = 0; title[i] != '\0' && j < maxBase; i++) {
-    char c = title[i];
-    if (c >= 'A' && c <= 'Z') c += 32;
-    if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
-      out[j++] = c;
-    } else if (c == ' ' || c == '_' || c == '-') {
-      if (j > 0 && out[j - 1] != '_') out[j++] = '_';
-    }
-  }
-  while (j > 0 && out[j - 1] == '_') j--;
-  if (j == 0) { strncpy(out, "note", maxLen - 1); j = 4; }
-  strcpy(out + j, ".txt");
-}
-
-// Update just the title of a file on disk without touching the body.
-// Also renames the file on disk to match the new title.
-// Uses the editor buffer temporarily — only call this from the file browser
-// (no active edit session).
+// Rename a file on disk to match a new title, updating editor state if needed.
 void updateFileTitle(const char* filename, const char* newTitle) {
-  char path[320], tmpPath[330];
-  snprintf(path, sizeof(path), "/notes/%s", filename);
-  snprintf(tmpPath, sizeof(tmpPath), "%s.tmp", path);
-
-  // Read the existing file into the editor buffer
-  auto rFile = SdMan.open(path, O_RDONLY);
-  if (!rFile) return;
-  char* buf = editorGetBuffer();
-  int readResult = rFile.read(buf, TEXT_BUFFER_SIZE - 1);
-  rFile.close();
-  if (readResult < 0) readResult = 0;
-  buf[readResult] = '\0';
-
-  // Find start of body (skip first line + blank separator)
-  char* body = strchr(buf, '\n');
-  if (body) {
-    while (*body == '\n' || *body == '\r') body++;
-  } else {
-    body = buf + readResult; // no body
-  }
-
-  // Write new file: new title + separator + existing body
-  auto wFile = SdMan.open(tmpPath, O_WRONLY | O_CREAT | O_TRUNC);
-  if (!wFile) return;
-  wFile.write((const uint8_t*)newTitle, strlen(newTitle));
-  wFile.write((const uint8_t*)"\n\n", 2);
-  wFile.write((const uint8_t*)body, strlen(body));
-  wFile.close();
-
-  SdMan.remove(path);
-  SdMan.rename(tmpPath, path);
-
-  // Rename the file on disk to match the title
   char newFilename[MAX_FILENAME_LEN];
-  titleToFilename(newTitle, newFilename, MAX_FILENAME_LEN);
+  deriveUniqueFilename(newTitle, newFilename, MAX_FILENAME_LEN);
 
   if (strcmp(newFilename, filename) != 0) {
-    // Handle collisions: strip .txt suffix for base, append _2, _3 etc.
-    char base[MAX_FILENAME_LEN];
-    strncpy(base, newFilename, MAX_FILENAME_LEN - 1);
-    base[strlen(base) - 4] = '\0'; // remove ".txt"
-
-    char newPath[320];
-    snprintf(newPath, sizeof(newPath), "/notes/%s", newFilename);
-    int suffix = 2;
-    while (SdMan.exists(newPath) && suffix <= 99) {
-      snprintf(newFilename, MAX_FILENAME_LEN, "%s_%d.txt", base, suffix++);
-      snprintf(newPath, sizeof(newPath), "/notes/%s", newFilename);
-    }
-
-    char oldPath[320];
+    char oldPath[320], newPath[320];
     snprintf(oldPath, sizeof(oldPath), "/notes/%s", filename);
+    snprintf(newPath, sizeof(newPath), "/notes/%s", newFilename);
     SdMan.rename(oldPath, newPath);
 
-    // Keep editor in sync if this file is currently open
     if (strcmp(editorGetCurrentFile(), filename) == 0) {
       editorSetCurrentFile(newFilename);
     }
