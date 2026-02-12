@@ -26,17 +26,17 @@ enum class Orientation : uint8_t {
 // --- Display Refresh Speed ---
 // Controls cooldown between e-ink refreshes. Longer = more battery savings, slower visual updates.
 enum class RefreshSpeed : uint8_t {
-  FAST     = 0,   // 100ms cooldown after refresh
-  BALANCED = 1,   // 300ms cooldown
-  SAVING   = 2    // 750ms cooldown
+  FAST     = 0,   // 0ms cooldown — hardware max (~2.3 refreshes/sec)
+  BALANCED = 1,   // 250ms cooldown (~1.5 refreshes/sec)
+  SAVING   = 2    // 1500ms cooldown (~0.5 refreshes/sec, one refresh every ~2s)
 };
 
 inline uint16_t refreshCooldownMs(RefreshSpeed speed) {
   switch (speed) {
-    case RefreshSpeed::FAST:     return 100;
-    case RefreshSpeed::BALANCED: return 300;
-    case RefreshSpeed::SAVING:   return 750;
-    default:                     return 300;
+    case RefreshSpeed::FAST:     return 0;
+    case RefreshSpeed::BALANCED: return 250;
+    case RefreshSpeed::SAVING:   return 1500;
+    default:                     return 250;
   }
 }
 
