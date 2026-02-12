@@ -8,6 +8,8 @@ A dedicated writing firmware for the **Xteink X4** e-paper device. Pairs with an
 - **Note Management** — browse, create, rename, and delete notes from an SD card
 - **Named Notes** — each note has a title stored in the file; shown in the browser and editable without touching body text
 - **Text Editor** — cursor navigation, word-wrap, fast e-paper refresh
+- **Auto-Save** — content is silently saved to SD card 2 seconds after you stop typing; no manual save required. Every exit path (back button, Esc, power button, sleep, restart) also saves automatically
+- **Safe Writes** — saves use a write-verify + `.bak` rotation pattern; a failed or interrupted write never destroys the previous version. Orphaned files from a crash are recovered automatically on next boot
 - **Dark Mode** — inverted display for low-light writing
 - **Clean Mode** — hides UI chrome while editing so only your text is on screen
 - **Display Orientation** — portrait, landscape, and inverted variants
@@ -89,10 +91,12 @@ When delete is pending, the footer shows `Delete? Enter:Yes  Esc:No`. Press Ente
 | Arrow keys | Move cursor |
 | Home / End | Start / end of line |
 | Backspace / Delete | Remove characters |
-| Ctrl+S | Save |
+| Ctrl+S | Save manually |
 | Ctrl+T | Edit note title |
 | Ctrl+Z | Toggle clean mode (hides UI chrome) |
-| Esc | Save and return to file browser |
+| Esc / Back button | Save and return to file browser |
+
+Auto-save runs silently 2 seconds after your last keystroke — Ctrl+S is only needed if you want to save immediately.
 
 ### Title Edit
 
@@ -117,6 +121,10 @@ Accessed via Ctrl+T from the file browser or editor.
 Options:
 - **Orientation** — cycles through portrait/landscape/inverted variants
 - **Dark Mode** — toggle inverted display
+- **Refresh Speed** — controls how often the screen updates while typing:
+  - *Fast* — refreshes as quickly as the display allows (~2.3/sec). Most responsive, uses the most battery
+  - *Balanced* — 250ms cooldown between refreshes (~1.5/sec). Default setting, good for most use
+  - *Battery Saver* — 750ms cooldown (~0.85/sec). Keystrokes batch up and appear together; noticeably slower but extends battery life significantly
 - **Bluetooth Settings** — submenu to scan and connect keyboards
 - **Clear Paired Device** — removes stored pairing from device memory
 
