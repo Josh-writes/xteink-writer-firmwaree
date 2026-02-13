@@ -687,7 +687,8 @@ void drawSyncScreen(GfxRenderer& renderer, HalGPIO& gpio) {
       int logCount = getSyncLogCount();
       if (logCount == 0) {
         drawClippedText(renderer, FONT_UI, 20, 75, "Waiting for PC...", sw - 40, tc);
-        drawClippedText(renderer, FONT_SMALL, 20, 105, "microslate.local", sw - 40, tc);
+        drawClippedText(renderer, FONT_SMALL, 20, 110, "Run microslate_sync.py on PC", sw - 40, tc);
+        drawClippedText(renderer, FONT_SMALL, 20, 130, "See README for setup", sw - 40, tc);
       } else {
         // Show activity log
         int yPos = 68;

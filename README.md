@@ -14,6 +14,7 @@ A dedicated writing firmware for the **Xteink X4** e-paper device. Pairs with an
 - **Dark Mode** — inverted display
 - **Display Orientation** — portrait, landscape, and inverted variants
 - **Power Management** — CPU light-sleeps between events to extend battery life
+- **WiFi Sync** — one-button backup of all notes to your PC over WiFi. Saves network credentials for instant reconnect. Read-only server — nothing on the device can be modified over the network
 - **Standalone Build** — all libraries are bundled in the repo; no sibling projects required
 
 ## Hardware Requirements
@@ -70,7 +71,7 @@ The device remembers the paired keyboard and reconnects automatically on subsequ
 | Up / Down | Navigate |
 | Enter | Select |
 
-Options: **Browse Notes**, **New Note**, **Settings**
+Options: **Browse Notes**, **New Note**, **Settings**, **Sync**
 
 ### File Browser
 
@@ -140,6 +141,61 @@ Options:
 
 A scan runs for 5 seconds and then stops. Up to 10 nearby devices are shown with name, address, and signal strength.
 
+### WiFi Sync
+
+Select **Sync** from the main menu to back up all notes to your PC over WiFi.
+
+**First time:** the device scans for WiFi networks, you pick one and enter the password. It asks if you want to save the credentials.
+
+**After that:** the device auto-connects using saved credentials — no network selection needed.
+
+Once connected, the device shows its IP address and waits for the PC sync script. Run the script, it downloads all notes, then signals the device it's done. The device shows a summary and turns WiFi off automatically.
+
+| Key | Action |
+|-----|--------|
+| Up / Down | Navigate network list |
+| Enter | Select network / confirm |
+| Esc | Cancel / back |
+
+**Safety features:**
+- The HTTP server is **read-only** — no one on the network can modify or delete files on the device
+- WiFi turns off automatically after sync completes or after 60 seconds of no activity
+- Saved WiFi passwords are stored on-device in NVS (non-volatile storage)
+
+#### PC Sync Script Setup
+
+The sync script requires Python 3 and the `requests` library.
+
+```bash
+pip install requests
+```
+
+**Manual sync:**
+
+```bash
+python sync/microslate_sync.py
+```
+
+The script waits for the device to appear, downloads all notes to `~/OneDrive/Documents/MicroSlate Notes/`, then exits. Edit `LOCAL_DIR` in the script to change the destination folder.
+
+**Auto-start on login (Windows):**
+
+```bash
+sync\install_sync.bat
+```
+
+This creates a Windows scheduled task that runs the sync script in the background every time you log in. To remove it:
+
+```bash
+sync\uninstall_sync.bat
+```
+
+**How sync works:**
+- All `.txt` files on the device are downloaded to the PC folder
+- Files already on the PC with the same name and size are skipped
+- Files deleted from the device are **not** deleted from the PC — they remain as a backup
+- Nothing is ever uploaded to the device — sync is one-way (device → PC)
+
 ## File Format
 
 Notes are plain `.txt` files stored in `/notes/` on the SD card. The first line is the title, followed by a blank line separator, then the body:
@@ -164,7 +220,12 @@ xteink-writer-firmware/
 │   ├── text_editor.cpp   — text buffer and cursor management
 │   ├── file_manager.cpp  — SD card file operations
 │   ├── ui_renderer.cpp   — screen rendering for all UI modes
+│   ├── wifi_sync.cpp     — WiFi sync server and state machine
 │   └── config.h          — hardware pins, buffer sizes, constants
+├── sync/
+│   ├── microslate_sync.py   — PC sync script (Python)
+│   ├── install_sync.bat     — register auto-start on Windows login
+│   └── uninstall_sync.bat   — remove auto-start task
 ├── lib/                  — all hardware/display libraries (bundled)
 │   ├── GfxRenderer/
 │   ├── EpdFont/
