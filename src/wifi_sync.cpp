@@ -453,65 +453,6 @@ static void handleFileDownload() {
   DBG_PRINTF("[SYNC] Sent file: %s\n", filename.c_str());
 }
 
-static void handleFileUpload() {
-  lastHttpActivityMs = millis();
-
-  String uri = server->uri();
-  if (!uri.startsWith("/notes/") || uri.length() <= 7) {
-    server->send(400, "text/plain", "Bad request");
-    return;
-  }
-
-  String filename = uri.substring(7);
-  char path[320];
-  snprintf(path, sizeof(path), "/notes/%s", filename.c_str());
-
-  String body = server->arg("plain");
-
-  auto file = SdMan.open(path, O_WRONLY | O_CREAT | O_TRUNC);
-  if (!file) {
-    server->send(500, "text/plain", "Failed to write");
-    return;
-  }
-
-  file.write((const uint8_t*)body.c_str(), body.length());
-  file.close();
-
-  refreshFileList();
-  server->send(200, "text/plain", "OK");
-
-  // Track: PC uploaded a file to device = "received"
-  filesReceived++;
-  addSyncLogEntry("Received: %s", filename.c_str());
-  DBG_PRINTF("[SYNC] Received file: %s\n", filename.c_str());
-}
-
-static void handleFileDelete() {
-  lastHttpActivityMs = millis();
-
-  String uri = server->uri();
-  if (!uri.startsWith("/notes/") || uri.length() <= 7) {
-    server->send(400, "text/plain", "Bad request");
-    return;
-  }
-
-  String filename = uri.substring(7);
-  char path[320];
-  snprintf(path, sizeof(path), "/notes/%s", filename.c_str());
-
-  if (!SdMan.exists(path)) {
-    server->send(404, "text/plain", "Not found");
-    return;
-  }
-
-  SdMan.remove(path);
-  refreshFileList();
-  server->send(200, "text/plain", "Deleted");
-
-  addSyncLogEntry("Deleted: %s", filename.c_str());
-  DBG_PRINTF("[SYNC] Deleted file: %s\n", filename.c_str());
-}
-
 static void handleSyncComplete() {
   lastHttpActivityMs = millis();
   server->send(200, "text/plain", "OK");
@@ -522,17 +463,9 @@ static void handleSyncComplete() {
 static void handleNotFound() {
   String uri = server->uri();
 
-  if (uri.startsWith("/notes/") && uri.length() > 7) {
-    if (server->method() == HTTP_GET) {
-      handleFileDownload();
-      return;
-    } else if (server->method() == HTTP_POST) {
-      handleFileUpload();
-      return;
-    } else if (server->method() == HTTP_DELETE) {
-      handleFileDelete();
-      return;
-    }
+  if (uri.startsWith("/notes/") && uri.length() > 7 && server->method() == HTTP_GET) {
+    handleFileDownload();
+    return;
   }
 
   server->send(404, "text/plain", "Not found");
