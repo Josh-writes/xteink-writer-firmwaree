@@ -1,4 +1,5 @@
 #include "SDCardManager.h"
+#include <SPI.h>
 
 namespace {
 constexpr uint8_t SD_CS = 12;
@@ -16,6 +17,7 @@ bool SDCardManager::begin() {
   } else {
     if (Serial) Serial.printf("[%lu] [SD] SD card detected\n", millis());
     initialized = true;
+    hasCard = true;
   }
 
   return initialized;
@@ -25,12 +27,21 @@ bool SDCardManager::ready() const {
   return initialized;
 }
 
+void SDCardManager::sleep() {
+  if (!initialized) return;
+  initialized = false;
+  SPI.end();  // Release SPI peripheral — pins go high-Z, saves power
+}
+
+bool SDCardManager::ensureReady() {
+  if (initialized) return true;
+  if (!hasCard) return false;  // No card was ever detected — don't retry
+  return begin();
+}
+
 std::vector<String> SDCardManager::listFiles(const char* path, const int maxFiles) {
   std::vector<String> ret;
-  if (!initialized) {
-    if (Serial) Serial.printf("[%lu] [SD] not initialized, returning empty list\n", millis());
-    return ret;
-  }
+  if (!ensureReady()) return ret;
 
   auto root = sd.open(path);
   if (!root) {
@@ -60,10 +71,7 @@ std::vector<String> SDCardManager::listFiles(const char* path, const int maxFile
 }
 
 String SDCardManager::readFile(const char* path) {
-  if (!initialized) {
-    if (Serial) Serial.printf("[%lu] [SD] not initialized; cannot read file\n", millis());
-    return {""};
-  }
+  if (!ensureReady()) return {""};
 
   FsFile f;
   if (!openFileForRead("SD", path, f)) {
@@ -83,11 +91,7 @@ String SDCardManager::readFile(const char* path) {
 }
 
 bool SDCardManager::readFileToStream(const char* path, Print& out, const size_t chunkSize) {
-  if (!initialized) {
-    if (Serial) Serial.printf("[%lu] [SD] Path is not a directory\n", millis());
-    if (Serial) Serial.println("SDCardManager: not initialized; cannot read file");
-    return false;
-  }
+  if (!ensureReady()) return false;
 
   FsFile f;
   if (!openFileForRead("SD", path, f)) {
@@ -114,9 +118,7 @@ bool SDCardManager::readFileToStream(const char* path, Print& out, const size_t 
 size_t SDCardManager::readFileToBuffer(const char* path, char* buffer, const size_t bufferSize, const size_t maxBytes) {
   if (!buffer || bufferSize == 0)
     return 0;
-  if (!initialized) {
-    if (Serial) Serial.printf("[%lu] [SD] Path is not a directory\n", millis());
-    if (Serial) Serial.println("SDCardManager: not initialized; cannot read file");
+  if (!ensureReady()) {
     buffer[0] = '\0';
     return 0;
   }
@@ -148,11 +150,7 @@ size_t SDCardManager::readFileToBuffer(const char* path, char* buffer, const siz
 }
 
 bool SDCardManager::writeFile(const char* path, const String& content) {
-  if (!initialized) {
-    if (Serial) Serial.printf("[%lu] [SD] Path is not a directory\n", millis());
-    if (Serial) Serial.println("SDCardManager: not initialized; cannot write file");
-    return false;
-  }
+  if (!ensureReady()) return false;
 
   // Remove existing file so we perform an overwrite rather than append
   if (sd.exists(path)) {
@@ -172,11 +170,7 @@ bool SDCardManager::writeFile(const char* path, const String& content) {
 }
 
 bool SDCardManager::ensureDirectoryExists(const char* path) {
-  if (!initialized) {
-    if (Serial) Serial.printf("[%lu] [SD] Path is not a directory\n", millis());
-    if (Serial) Serial.println("SDCardManager: not initialized; cannot create directory");
-    return false;
-  }
+  if (!ensureReady()) return false;
 
   // Check if directory already exists
   if (sd.exists(path)) {
@@ -203,6 +197,7 @@ bool SDCardManager::ensureDirectoryExists(const char* path) {
 }
 
 bool SDCardManager::openFileForRead(const char* moduleName, const char* path, FsFile& file) {
+  if (!ensureReady()) return false;
   if (!sd.exists(path)) {
     if (Serial) Serial.printf("[%lu] [%s] File does not exist: %s\n", millis(), moduleName, path);
     return false;
@@ -225,6 +220,7 @@ bool SDCardManager::openFileForRead(const char* moduleName, const String& path, 
 }
 
 bool SDCardManager::openFileForWrite(const char* moduleName, const char* path, FsFile& file) {
+  if (!ensureReady()) return false;
   file = sd.open(path, O_RDWR | O_CREAT | O_TRUNC);
   if (!file) {
     if (Serial) Serial.printf("[%lu] [%s] Failed to open file for writing: %s\n", millis(), moduleName, path);
@@ -242,6 +238,7 @@ bool SDCardManager::openFileForWrite(const char* moduleName, const String& path,
 }
 
 bool SDCardManager::removeDir(const char* path) {
+  if (!ensureReady()) return false;
   // 1. Open the directory
   auto dir = sd.open(path);
   if (!dir) {

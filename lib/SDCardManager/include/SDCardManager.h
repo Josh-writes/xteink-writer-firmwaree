@@ -10,6 +10,8 @@ class SDCardManager {
   SDCardManager();
   bool begin();
   bool ready() const;
+  // Release the SPI bus to save power. Next access auto-reinitializes.
+  void sleep();
   std::vector<String> listFiles(const char* path = "/", int maxFiles = 200);
   // Read the entire file at `path` into a String. Returns empty string on failure.
   String readFile(const char* path);
@@ -25,12 +27,12 @@ class SDCardManager {
   // Ensure a directory exists, creating it if necessary. Returns true on success.
   bool ensureDirectoryExists(const char* path);
 
-  FsFile open(const char* path, const oflag_t oflag = O_RDONLY) { return sd.open(path, oflag); }
-  bool mkdir(const char* path, const bool pFlag = true) { return sd.mkdir(path, pFlag); }
-  bool exists(const char* path) { return sd.exists(path); }
-  bool remove(const char* path) { return sd.remove(path); }
-  bool rmdir(const char* path) { return sd.rmdir(path); }
-  bool rename(const char* path, const char* newPath) { return sd.rename(path, newPath); }
+  FsFile open(const char* path, const oflag_t oflag = O_RDONLY) { if (!ensureReady()) return FsFile(); return sd.open(path, oflag); }
+  bool mkdir(const char* path, const bool pFlag = true) { if (!ensureReady()) return false; return sd.mkdir(path, pFlag); }
+  bool exists(const char* path) { if (!ensureReady()) return false; return sd.exists(path); }
+  bool remove(const char* path) { if (!ensureReady()) return false; return sd.remove(path); }
+  bool rmdir(const char* path) { if (!ensureReady()) return false; return sd.rmdir(path); }
+  bool rename(const char* path, const char* newPath) { if (!ensureReady()) return false; return sd.rename(path, newPath); }
 
   bool openFileForRead(const char* moduleName, const char* path, FsFile& file);
   bool openFileForRead(const char* moduleName, const std::string& path, FsFile& file);
@@ -45,7 +47,9 @@ class SDCardManager {
  private:
   static SDCardManager instance;
 
+  bool ensureReady();
   bool initialized = false;
+  bool hasCard = false;  // true after first successful begin() — distinguishes sleep from no card
   SdFat sd;
 };
 

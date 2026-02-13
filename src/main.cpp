@@ -449,7 +449,7 @@ static void processPhysicalButtons() {
 
 // Global variable for activity tracking
 static unsigned long lastActivityTime = 0;
-const unsigned long IDLE_TIMEOUT = 10UL * 60UL * 1000UL; // 10 minutes
+const unsigned long IDLE_TIMEOUT = 5UL * 60UL * 1000UL; // 5 minutes
 
 void registerActivity() {
   lastActivityTime = millis();

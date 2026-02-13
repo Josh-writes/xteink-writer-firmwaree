@@ -149,6 +149,7 @@ void loadFile(const char* filename) {
   editorSetUnsavedChanges(false);
 
   currentState = UIState::TEXT_EDITOR;
+  SdMan.sleep();
   DBG_PRINTF("Loaded: %s (%d bytes)\n", filename, (int)bytesRead);
 }
 
@@ -190,6 +191,7 @@ void saveCurrentFile(bool refreshList) {
 
   editorSetUnsavedChanges(false);
   if (refreshList) refreshFileList();
+  SdMan.sleep();
   DBG_PRINTF("Saved: %s\n", filename);
 }
 
@@ -217,6 +219,7 @@ void updateFileTitle(const char* filename, const char* newTitle) {
   }
 
   refreshFileList();
+  SdMan.sleep();
 }
 
 void deleteFile(const char* filename) {
@@ -226,5 +229,6 @@ void deleteFile(const char* filename) {
   SdMan.remove(path);
   SdMan.remove(bakPath);
   refreshFileList();
+  SdMan.sleep();
   DBG_PRINTF("Deleted: %s\n", filename);
 }
