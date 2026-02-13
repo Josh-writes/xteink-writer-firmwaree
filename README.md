@@ -1,7 +1,3 @@
-#Disclaimer 
-
-This is an indie project that is a work in project.  It may have problems and there is no gaurantee it will work with your keyboard or your setup.  This is my first open source project and the first time to write firmware.  Feel free to open a dialgue in the issues with me and we can work on it together.  Thanks for checking out my project. 
-
 # MicroSlate
 
 A dedicated writing firmware for the **Xteink X4** e-paper device. Pairs with any Bluetooth keyboard and saves notes to MicroSD.
