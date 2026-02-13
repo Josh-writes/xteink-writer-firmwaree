@@ -332,7 +332,7 @@ void drawTextEditor(GfxRenderer& renderer, HalGPIO& gpio) {
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }
 
-void drawRenameScreen(GfxRenderer& renderer) {
+void drawRenameScreen(GfxRenderer& renderer, HalGPIO& gpio) {
   renderer.clearScreen();
   int sw = renderer.getScreenWidth();
   int sh = renderer.getScreenHeight();
@@ -341,22 +341,23 @@ void drawRenameScreen(GfxRenderer& renderer) {
   if (darkMode) clippedFillRect(renderer, 0, 0, sw, sh, true);
 
   drawClippedText(renderer, FONT_SMALL, 10, 5, "Edit Title", 0, tc, EpdFontFamily::BOLD);
+  drawBattery(renderer, gpio);
   clippedLine(renderer, 5, 32, sw - 5, 32, tc);
 
   drawClippedText(renderer, FONT_SMALL, 20, 42, "Note title:", 0, tc);
-  int boxY = 58, boxH = 30;
-  int textY = boxY + 6;  // vertically center text within box
+  int boxY = 62, boxH = 28;
+  int textY = boxY + 5;
   renderer.drawRect(15, boxY, sw - 30, boxH, tc);
   drawClippedText(renderer, FONT_UI, 20, textY, renameBuffer, sw - 50, tc);
 
-  // Cursor — match text vertical position and height
+  // Cursor — thin bar aligned with text
   int cursorX = 20 + renderer.getTextAdvanceX(FONT_UI, renameBuffer);
-  int cursorW = renderer.getSpaceWidth(FONT_UI);
-  if (cursorW < 2) cursorW = 8;
-  if (cursorX + cursorW < sw)
-    renderer.fillRect(cursorX, textY, cursorW, boxH - 12, tc);
+  if (cursorX + 2 < sw - 15)
+    renderer.fillRect(cursorX, textY + 1, 2, 14, tc);
 
-  drawClippedText(renderer, FONT_SMALL, 20, 110, "Enter: Confirm   Esc: Cancel", 0, tc);
+  // Footer
+  clippedLine(renderer, 5, sh - 28, sw - 5, sh - 28, tc);
+  drawClippedText(renderer, FONT_SMALL, 10, sh - 22, "Enter: Confirm   Esc: Cancel", 0, tc);
 
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }
