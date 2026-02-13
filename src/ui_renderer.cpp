@@ -3,6 +3,7 @@
 #include "text_editor.h"
 #include "file_manager.h"
 #include "ble_keyboard.h"
+#include "wifi_sync.h"
 
 #include <GfxRenderer.h>
 #include <HalGPIO.h>
@@ -166,8 +167,8 @@ void drawMainMenu(GfxRenderer& renderer, HalGPIO& gpio) {
   renderer.drawCenteredText(FONT_BODY, 30, "MicroSlate", tc, EpdFontFamily::BOLD);
 
   // Menu items
-  static const char* menuItems[] = {"Browse Files", "New Note", "Settings"};
-  for (int i = 0; i < 3; i++) {
+  static const char* menuItems[] = {"Browse Files", "New Note", "Settings", "Sync"};
+  for (int i = 0; i < 4; i++) {
     int yPos = 90 + (i * 45);
     if (i == mainMenuSelection) {
       clippedFillRect(renderer, 5, yPos - 5, sw - 10, 35, tc);
@@ -552,6 +553,189 @@ void drawBluetoothSettings(GfxRenderer& renderer, HalGPIO& gpio) {
     clippedLine(renderer, 10, sh - bm, sw - 10, sh - bm, tc);
     drawClippedText(renderer, FONT_SMALL, 20, sh - bm + 12,
                     "Enter:Connect  Right:Scan  Left:Disconnect  Esc:Back", 0, tc);
+  }
+
+  renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+}
+
+// Helper: draw signal strength indicator (1-4 bars)
+static void drawSignalBars(GfxRenderer& r, int x, int y, int rssi, bool color) {
+  // RSSI to bars: > -50 = 4, > -65 = 3, > -75 = 2, else 1
+  int bars = (rssi > -50) ? 4 : (rssi > -65) ? 3 : (rssi > -75) ? 2 : 1;
+  for (int i = 0; i < 4; i++) {
+    int bh = 4 + i * 3;  // bar heights: 4, 7, 10, 13
+    int by = y + 13 - bh;
+    if (i < bars) {
+      clippedFillRect(r, x + i * 5, by, 3, bh, color);
+    } else {
+      clippedFillRect(r, x + i * 5, by + bh - 2, 3, 2, color);
+    }
+  }
+}
+
+void drawSyncScreen(GfxRenderer& renderer, HalGPIO& gpio) {
+  renderer.clearScreen();
+  int sw = renderer.getScreenWidth();
+  int sh = renderer.getScreenHeight();
+  bool tc = !darkMode;
+
+  if (darkMode) clippedFillRect(renderer, 0, 0, sw, sh, true);
+
+  // Header
+  drawClippedText(renderer, FONT_SMALL, 10, 5, "Sync", 0, tc, EpdFontFamily::BOLD);
+  drawBattery(renderer, gpio);
+  clippedLine(renderer, 5, 32, sw - 5, 32, tc);
+
+  SyncState state = getSyncState();
+
+  switch (state) {
+    case SyncState::SCANNING: {
+      drawClippedText(renderer, FONT_UI, 20, 80, "Scanning for networks...", sw - 40, tc);
+      break;
+    }
+
+    case SyncState::NETWORK_LIST: {
+      int nc = getNetworkCount();
+      int sel = getSelectedNetwork();
+
+      if (nc == 0) {
+        const char* st = getSyncStatusText();
+        drawClippedText(renderer, FONT_UI, 20, 60, st[0] ? st : "No networks found", sw - 40, tc);
+        drawClippedText(renderer, FONT_SMALL, 20, 90, "Enter: Rescan  Esc: Back", 0, tc);
+      } else {
+        drawClippedText(renderer, FONT_SMALL, 10, 38, "Select network:", 0, tc);
+
+        int lineH = 28;
+        int listTop = 56;
+        int footerH = 28;
+        int maxVisible = (sh - listTop - footerH) / lineH;
+        int startIdx = 0;
+        if (nc > maxVisible && sel >= maxVisible) {
+          startIdx = sel - maxVisible + 1;
+        }
+
+        for (int i = startIdx; i < nc && (i - startIdx) < maxVisible; i++) {
+          int yPos = listTop + (i - startIdx) * lineH;
+          bool isSel = (i == sel);
+
+          // Build display string: signal indicator + lock + saved + SSID
+          char label[48];
+          snprintf(label, sizeof(label), "%s%s%s",
+                   isNetworkEncrypted(i) ? "* " : "  ",
+                   isNetworkSaved(i) ? "+ " : "",
+                   getNetworkSSID(i));
+
+          if (isSel) {
+            clippedFillRect(renderer, 5, yPos - 3, sw - 10, lineH - 2, tc);
+            drawClippedText(renderer, FONT_UI, 15, yPos, label, sw - 50, !tc);
+            drawSignalBars(renderer, sw - 30, yPos, getNetworkRSSI(i), !tc);
+          } else {
+            drawClippedText(renderer, FONT_UI, 15, yPos, label, sw - 50, tc);
+            drawSignalBars(renderer, sw - 30, yPos, getNetworkRSSI(i), tc);
+          }
+        }
+      }
+
+      // Footer
+      constexpr int bm = 28;
+      clippedLine(renderer, 10, sh - bm - 2, sw - 10, sh - bm - 2, tc);
+      drawClippedText(renderer, FONT_SMALL, 10, sh - bm + 4,
+                      "*=encrypted +=saved  Enter:Select  Esc:Back", 0, tc);
+      break;
+    }
+
+    case SyncState::PASSWORD_ENTRY: {
+      int sel = getSelectedNetwork();
+      char heading[48];
+      snprintf(heading, sizeof(heading), "Password for %s", getNetworkSSID(sel));
+      drawClippedText(renderer, FONT_SMALL, 20, 42, heading, sw - 40, tc);
+
+      // Password field box
+      renderer.drawRect(15, 62, sw - 30, 30, tc);
+
+      // Show dots for password characters (privacy)
+      const char* pass = getPasswordBuffer();
+      int pLen = getPasswordLen();
+      char dots[MAX_TITLE_LEN + 1];
+      int dotLen = pLen < MAX_TITLE_LEN ? pLen : MAX_TITLE_LEN;
+      for (int i = 0; i < dotLen; i++) dots[i] = '*';
+      dots[dotLen] = '\0';
+      drawClippedText(renderer, FONT_UI, 20, 66, dots, sw - 50, tc);
+
+      // Cursor
+      int cursorX = 20 + renderer.getTextAdvanceX(FONT_UI, dots);
+      int cursorW = renderer.getSpaceWidth(FONT_UI);
+      if (cursorW < 2) cursorW = 8;
+      if (cursorX + cursorW < sw)
+        renderer.fillRect(cursorX, 66, cursorW, 20, tc);
+
+      drawClippedText(renderer, FONT_SMALL, 20, 110, "Enter: Connect   Esc: Cancel", 0, tc);
+      break;
+    }
+
+    case SyncState::CONNECTING: {
+      const char* st = getSyncStatusText();
+      drawClippedText(renderer, FONT_UI, 20, 80, st, sw - 40, tc);
+      drawClippedText(renderer, FONT_SMALL, 20, 110, "Esc: Cancel", 0, tc);
+      break;
+    }
+
+    case SyncState::SYNCING: {
+      const char* ip = getSyncStatusText();
+      drawClippedText(renderer, FONT_SMALL, 20, 42, ip, sw - 40, tc, EpdFontFamily::BOLD);
+
+      int logCount = getSyncLogCount();
+      if (logCount == 0) {
+        drawClippedText(renderer, FONT_UI, 20, 75, "Waiting for PC...", sw - 40, tc);
+        drawClippedText(renderer, FONT_SMALL, 20, 105, "microslate.local", sw - 40, tc);
+      } else {
+        // Show activity log
+        int yPos = 68;
+        for (int i = 0; i < logCount && yPos < sh - 50; i++) {
+          drawClippedText(renderer, FONT_SMALL, 20, yPos, getSyncLogLine(i), sw - 40, tc);
+          yPos += 20;
+        }
+      }
+
+      // Footer
+      constexpr int bm = 28;
+      clippedLine(renderer, 10, sh - bm - 2, sw - 10, sh - bm - 2, tc);
+      char countStr[48];
+      snprintf(countStr, sizeof(countStr), "Sent: %d  Recv: %d   Esc: Cancel",
+               getSyncFilesSent(), getSyncFilesReceived());
+      drawClippedText(renderer, FONT_SMALL, 10, sh - bm + 4, countStr, sw - 20, tc);
+      break;
+    }
+
+    case SyncState::DONE: {
+      const char* summary = getSyncStatusText();
+      drawClippedText(renderer, FONT_SMALL, 20, 50, "Sync Complete", 0, tc, EpdFontFamily::BOLD);
+      drawClippedText(renderer, FONT_UI, 20, 85, summary, sw - 40, tc);
+      drawClippedText(renderer, FONT_SMALL, 20, 125, "Returning to menu...", 0, tc);
+      break;
+    }
+
+    case SyncState::CONNECT_FAILED: {
+      drawClippedText(renderer, FONT_UI, 20, 80, "Connection failed", sw - 40, tc);
+      drawClippedText(renderer, FONT_SMALL, 20, 110, "Enter: Retry   Esc: Back", 0, tc);
+      break;
+    }
+
+    case SyncState::SAVE_PROMPT: {
+      const char* ip = getSyncStatusText();
+      drawClippedText(renderer, FONT_SMALL, 20, 50, "Connected!", 0, tc, EpdFontFamily::BOLD);
+      drawClippedText(renderer, FONT_UI, 20, 80, ip, sw - 40, tc);
+      drawClippedText(renderer, FONT_SMALL, 20, 120, "Save password?", 0, tc, EpdFontFamily::BOLD);
+      drawClippedText(renderer, FONT_SMALL, 20, 145, "Enter/Up: Yes   Down/Esc: No", 0, tc);
+      break;
+    }
+
+    case SyncState::FORGET_PROMPT: {
+      drawClippedText(renderer, FONT_UI, 20, 80, "Saved password failed", sw - 40, tc);
+      drawClippedText(renderer, FONT_SMALL, 20, 120, "Forget saved password?", 0, tc, EpdFontFamily::BOLD);
+      drawClippedText(renderer, FONT_SMALL, 20, 145, "Enter/Up: Yes   Down/Esc: No", 0, tc);
+      break;
+    }
   }
 
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);

@@ -10,3 +10,4 @@ void drawTextEditor(GfxRenderer& renderer, HalGPIO& gpio);
 void drawRenameScreen(GfxRenderer& renderer);
 void drawSettingsMenu(GfxRenderer& renderer, HalGPIO& gpio);
 void drawBluetoothSettings(GfxRenderer& renderer, HalGPIO& gpio);
+void drawSyncScreen(GfxRenderer& renderer, HalGPIO& gpio);

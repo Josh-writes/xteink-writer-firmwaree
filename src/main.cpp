@@ -11,6 +11,7 @@
 #include "text_editor.h"
 #include "file_manager.h"
 #include "ui_renderer.h"
+#include "wifi_sync.h"
 
 // Enum for sleep reasons
 enum class SleepReason {
@@ -89,6 +90,7 @@ static void updateScreen() {
     case UIState::RENAME_FILE:       drawRenameScreen(renderer); break;
     case UIState::SETTINGS:          drawSettingsMenu(renderer, gpio); break;
     case UIState::BLUETOOTH_SETTINGS: drawBluetoothSettings(renderer, gpio); break;
+    case UIState::WIFI_SYNC:          drawSyncScreen(renderer, gpio); break;
     default: break;
   }
 }
@@ -385,6 +387,25 @@ static void processPhysicalButtons() {
       }
       break;
 
+    case UIState::WIFI_SYNC:
+      if (btnUp && !btnUpLast) {
+        enqueueKeyEvent(HID_KEY_UP, 0, true);
+        enqueueKeyEvent(HID_KEY_UP, 0, false);
+      }
+      if (btnDown && !btnDownLast) {
+        enqueueKeyEvent(HID_KEY_DOWN, 0, true);
+        enqueueKeyEvent(HID_KEY_DOWN, 0, false);
+      }
+      if (btnConfirm && !btnConfirmLast) {
+        enqueueKeyEvent(HID_KEY_ENTER, 0, true);
+        enqueueKeyEvent(HID_KEY_ENTER, 0, false);
+      }
+      if (btnBack && !btnBackLast) {
+        enqueueKeyEvent(HID_KEY_ESCAPE, 0, true);
+        enqueueKeyEvent(HID_KEY_ESCAPE, 0, false);
+      }
+      break;
+
     case UIState::SETTINGS:
       if (btnUp && !btnUpLast) {
         enqueueKeyEvent(HID_KEY_UP, 0, true);
@@ -492,6 +513,9 @@ void loop() {
   // Process BLE (connection handling, scan completion detection)
   bleLoop();
 
+  // Process WiFi sync HTTP clients when active
+  if (isWifiSyncActive()) wifiSyncLoop();
+
   // CRITICAL: Process buttons BEFORE checking wasAnyPressed() to avoid consuming button states
   processPhysicalButtons();
   int inputEventsProcessed = processAllInput(); // Assuming this returns number of events processed
@@ -515,6 +539,15 @@ void loop() {
       && (millis() - lastAutoSaveMs) > AUTO_SAVE_INTERVAL_MS) {
     lastAutoSaveMs = millis();
     saveCurrentFile(false);  // Skip refreshFileList — file list unchanged by content update
+  }
+
+  // Periodically refresh sync screen to show status changes (every 2s)
+  if (currentState == UIState::WIFI_SYNC) {
+    static unsigned long lastSyncRefresh = 0;
+    if (millis() - lastSyncRefresh > 2000) {
+      screenDirty = true;
+      lastSyncRefresh = millis();
+    }
   }
 
   // Cooldown-based screen refresh: the e-ink refresh (~430ms) IS the rate limiter.
@@ -549,8 +582,8 @@ void loop() {
     lastSavedRefreshSpeed = refreshSpeed;
   }
 
-  // Check for idle timeout
-  if (millis() - lastActivityTime > IDLE_TIMEOUT) {
+  // Check for idle timeout (skip while WiFi sync is active)
+  if (!isWifiSyncActive() && millis() - lastActivityTime > IDLE_TIMEOUT) {
     enterDeepSleep(SleepReason::IDLE_TIMEOUT);
   }
 

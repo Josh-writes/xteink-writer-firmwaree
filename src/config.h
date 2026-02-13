@@ -11,7 +11,8 @@ enum class UIState {
   RENAME_FILE,
   NEW_FILE,
   SETTINGS,
-  BLUETOOTH_SETTINGS
+  BLUETOOTH_SETTINGS,
+  WIFI_SYNC
 };
 
 // --- Display Orientation ---

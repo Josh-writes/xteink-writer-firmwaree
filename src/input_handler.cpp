@@ -2,6 +2,7 @@
 #include "text_editor.h"
 #include "file_manager.h"
 #include "ble_keyboard.h"
+#include "wifi_sync.h"
 
 #include <Arduino.h>
 #include <SDCardManager.h>
@@ -247,10 +248,10 @@ static void dispatchEvent(const KeyEvent& event) {
   switch (currentState) {
     case UIState::MAIN_MENU: {
       if (event.keyCode == HID_KEY_DOWN) {
-        mainMenuSelection = (mainMenuSelection + 1) % 3;
+        mainMenuSelection = (mainMenuSelection + 1) % 4;
         screenDirty = true;
       } else if (event.keyCode == HID_KEY_UP) {
-        mainMenuSelection = (mainMenuSelection - 1 + 3) % 3;
+        mainMenuSelection = (mainMenuSelection - 1 + 4) % 4;
         screenDirty = true;
       } else if (event.keyCode == HID_KEY_ENTER) {
         if (mainMenuSelection == 0) {
@@ -261,6 +262,10 @@ static void dispatchEvent(const KeyEvent& event) {
           openTitleEdit("Untitled", UIState::TEXT_EDITOR);
         } else if (mainMenuSelection == 2) {
           currentState = UIState::SETTINGS;
+          screenDirty = true;
+        } else if (mainMenuSelection == 3) {
+          wifiSyncStart();
+          currentState = UIState::WIFI_SYNC;
           screenDirty = true;
         }
       }
@@ -413,6 +418,11 @@ static void dispatchEvent(const KeyEvent& event) {
           screenDirty = true;
         }
       }
+      break;
+    }
+
+    case UIState::WIFI_SYNC: {
+      syncHandleKey(event.keyCode, event.modifiers);
       break;
     }
 
