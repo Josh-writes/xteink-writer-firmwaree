@@ -224,7 +224,7 @@ static void processPhysicalButtons() {
   }
 
   if (btnPower && powerHeld && !sleepTriggered) {
-    if (millis() - powerPressStart > 5000) {
+    if (millis() - powerPressStart > 3000) {
       sleepTriggered = true;
       enterDeepSleep(SleepReason::POWER_LONGPRESS);
       return; // Exit early to prevent further processing

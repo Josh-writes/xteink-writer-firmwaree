@@ -181,7 +181,7 @@ void drawMainMenu(GfxRenderer& renderer, HalGPIO& gpio) {
   // Footer
   constexpr int bm = 60;
   if (sh > bm + 40) {
-    clippedLine(renderer, 10, sh - bm, sw - 10, sh - bm);
+    clippedLine(renderer, 10, sh - bm, sw - 10, sh - bm, tc);
     drawClippedText(renderer, FONT_SMALL, 20, sh - bm + 12, "Arrows: Navigate  Enter: Select", 0, tc);
     drawBleStatus(renderer, 20, sh - bm + 28);
   }
@@ -201,7 +201,7 @@ void drawFileBrowser(GfxRenderer& renderer, HalGPIO& gpio) {
   // Header
   drawClippedText(renderer, FONT_SMALL, 10, 5, "Notes", 0, tc, EpdFontFamily::BOLD);
   drawBattery(renderer, gpio);
-  clippedLine(renderer, 5, 32, sw - 5, 32);
+  clippedLine(renderer, 5, 32, sw - 5, 32, tc);
 
   int fc = getFileCount();
   int lineH = 30;
@@ -231,7 +231,7 @@ void drawFileBrowser(GfxRenderer& renderer, HalGPIO& gpio) {
   }
 
   // Footer
-  clippedLine(renderer, 5, sh - footerH - 2, sw - 5, sh - footerH - 2);
+  clippedLine(renderer, 5, sh - footerH - 2, sw - 5, sh - footerH - 2, tc);
   if (deleteConfirmPending && fc > 0) {
     drawClippedText(renderer, FONT_SMALL, 10, sh - footerH + 4, "Delete? Enter:Yes  Esc:No", 0, tc);
   } else {
@@ -267,7 +267,7 @@ void drawTextEditor(GfxRenderer& renderer, HalGPIO& gpio) {
     }
     drawClippedText(renderer, FONT_SMALL, 10, 5, headerBuf, sw - 60, tc, EpdFontFamily::BOLD);
     drawBattery(renderer, gpio);
-    clippedLine(renderer, 5, 32, sw - 5, 32);
+    clippedLine(renderer, 5, 32, sw - 5, 32, tc);
     textAreaTop = 38;
   }
 
@@ -344,15 +344,17 @@ void drawRenameScreen(GfxRenderer& renderer) {
   clippedLine(renderer, 5, 32, sw - 5, 32, tc);
 
   drawClippedText(renderer, FONT_SMALL, 20, 42, "Note title:", 0, tc);
-  renderer.drawRect(15, 58, sw - 30, 30, tc);
-  drawClippedText(renderer, FONT_UI, 20, 62, renameBuffer, sw - 50, tc);
+  int boxY = 58, boxH = 30;
+  int textY = boxY + 6;  // vertically center text within box
+  renderer.drawRect(15, boxY, sw - 30, boxH, tc);
+  drawClippedText(renderer, FONT_UI, 20, textY, renameBuffer, sw - 50, tc);
 
-  // Cursor
+  // Cursor — match text vertical position and height
   int cursorX = 20 + renderer.getTextAdvanceX(FONT_UI, renameBuffer);
   int cursorW = renderer.getSpaceWidth(FONT_UI);
   if (cursorW < 2) cursorW = 8;
   if (cursorX + cursorW < sw)
-    renderer.fillRect(cursorX, 62, cursorW, 20, tc);
+    renderer.fillRect(cursorX, textY, cursorW, boxH - 12, tc);
 
   drawClippedText(renderer, FONT_SMALL, 20, 110, "Enter: Confirm   Esc: Cancel", 0, tc);
 
@@ -368,7 +370,7 @@ void drawSettingsMenu(GfxRenderer& renderer, HalGPIO& gpio) {
 
   drawClippedText(renderer, FONT_SMALL, 10, 5, "Settings", 0, !darkMode, EpdFontFamily::BOLD);
   drawBattery(renderer, gpio);
-  clippedLine(renderer, 5, 32, sw - 5, 32);
+  clippedLine(renderer, 5, 32, sw - 5, 32, !darkMode);
 
   // Setting items: Orientation, Dark Mode, Refresh Speed, Bluetooth, Clear Paired
   static const char* labels[] = {"Orientation", "Dark Mode", "Refresh Speed", "Bluetooth", "Clear Paired"};
