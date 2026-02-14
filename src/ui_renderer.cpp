@@ -16,6 +16,8 @@ extern bool autoReconnectEnabled;
 extern bool darkMode;
 extern bool cleanMode;
 extern bool deleteConfirmPending;
+extern WritingMode writingMode;
+extern BlindDelay blindDelay;
 
 // External functions
 bool getStoredDevice(std::string& address, std::string& name);
@@ -236,97 +238,184 @@ void drawFileBrowser(GfxRenderer& renderer, HalGPIO& gpio) {
     drawClippedText(renderer, FONT_SMALL, 10, sh - footerH + 4, "Delete? Enter:Yes  Esc:No", 0, tc);
   } else {
     drawClippedText(renderer, FONT_SMALL, 10, sh - footerH + 4,
-                    "Ctrl+T:Title  Ctrl+D:Delete", 0, tc);
+                    "Ctrl+N:Title  Ctrl+D:Delete", 0, tc);
   }
 
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+}
+
+// Helper: draw a single editor line from the buffer
+static void drawEditorLine(GfxRenderer& renderer, int lineIdx, int x, int yPos,
+                           int maxW, bool tc) {
+  char* buf = editorGetBuffer();
+  size_t bufLen = editorGetLength();
+  int totalLines = editorGetLineCount();
+
+  int lineStart = editorGetLinePosition(lineIdx);
+  int lineEnd = (lineIdx + 1 < totalLines) ? editorGetLinePosition(lineIdx + 1) : (int)bufLen;
+  int dispEnd = lineEnd;
+  if (dispEnd > lineStart && buf[dispEnd - 1] == '\n') dispEnd--;
+
+  int len = dispEnd - lineStart;
+  if (len > 0) {
+    char lineBuf[256];
+    int copyLen = (len < (int)sizeof(lineBuf) - 1) ? len : (int)sizeof(lineBuf) - 1;
+    strncpy(lineBuf, buf + lineStart, copyLen);
+    lineBuf[copyLen] = '\0';
+    drawClippedText(renderer, FONT_BODY, x, yPos, lineBuf, maxW, tc);
+  }
+}
+
+// Helper: draw cursor at the given screen position
+static void drawEditorCursor(GfxRenderer& renderer, int cursorY, int lineHeight,
+                             int sw, bool tc) {
+  int curLine = editorGetCursorLine();
+  int curCol = editorGetCursorCol();
+  char* buf = editorGetBuffer();
+
+  int lineStart = editorGetLinePosition(curLine);
+  char prefix[256];
+  int prefixLen = (curCol < (int)sizeof(prefix) - 1) ? curCol : (int)sizeof(prefix) - 1;
+  strncpy(prefix, buf + lineStart, prefixLen);
+  prefix[prefixLen] = '\0';
+
+  int cursorX = 10 + renderer.getTextAdvanceX(FONT_BODY, prefix);
+  int cursorW = renderer.getSpaceWidth(FONT_BODY);
+  if (cursorW < 2) cursorW = 8;
+
+  if (cursorX >= 0 && cursorX + cursorW <= sw && cursorY >= 0 && cursorY + lineHeight <= renderer.getScreenHeight()) {
+    renderer.fillRect(cursorX, cursorY, cursorW, lineHeight, tc);
+  }
+}
+
+// Helper: draw the standard editor header, returns textAreaTop
+static int drawEditorHeader(GfxRenderer& renderer, HalGPIO& gpio, int sw, bool tc,
+                            const char* modeIndicator = nullptr) {
+  if (cleanMode) return 8;
+
+  const char* title = editorGetCurrentTitle();
+  char headerBuf[64];
+  if (editorHasUnsavedChanges()) {
+    snprintf(headerBuf, sizeof(headerBuf), "%s *", title);
+  } else {
+    strncpy(headerBuf, title, sizeof(headerBuf) - 1);
+    headerBuf[sizeof(headerBuf) - 1] = '\0';
+  }
+  drawClippedText(renderer, FONT_SMALL, 10, 5, headerBuf, sw - 100, tc, EpdFontFamily::BOLD);
+
+  // Mode indicator in header (before battery)
+  if (modeIndicator) {
+    int indW = renderer.getTextAdvanceX(FONT_SMALL, modeIndicator);
+    drawClippedText(renderer, FONT_SMALL, sw - 55 - indW, 5, modeIndicator, indW + 5, tc);
+  }
+
+  drawBattery(renderer, gpio);
+  clippedLine(renderer, 5, 32, sw - 5, 32, tc);
+  return 38;
 }
 
 void drawTextEditor(GfxRenderer& renderer, HalGPIO& gpio) {
   renderer.clearScreen();
   int sw = renderer.getScreenWidth();
   int sh = renderer.getScreenHeight();
-  bool tc = !darkMode;  // text color: black in light mode, white in dark mode
+  bool tc = !darkMode;
 
-  // Dark mode: fill background black
   if (darkMode) clippedFillRect(renderer, 0, 0, sw, sh, true);
 
-  // --- Clean mode: no header/footer, just text ---
-  int textAreaTop;
-  if (cleanMode) {
-    textAreaTop = 8;
-  } else {
-    // --- Header bar ---
-    const char* title = editorGetCurrentTitle();
-    char headerBuf[64];
-    if (editorHasUnsavedChanges()) {
-      snprintf(headerBuf, sizeof(headerBuf), "%s *", title);
-    } else {
-      strncpy(headerBuf, title, sizeof(headerBuf) - 1);
-      headerBuf[sizeof(headerBuf) - 1] = '\0';
-    }
-    drawClippedText(renderer, FONT_SMALL, 10, 5, headerBuf, sw - 60, tc, EpdFontFamily::BOLD);
-    drawBattery(renderer, gpio);
-    clippedLine(renderer, 5, 32, sw - 5, 32, tc);
-    textAreaTop = 38;
-  }
-
-  // --- Text area ---
-  int textAreaBottom = sh - 5;
-  int textAreaHeight = textAreaBottom - textAreaTop;
   int lineHeight = renderer.getLineHeight(FONT_BODY);
   if (lineHeight <= 0) lineHeight = 20;
+  int totalLines = editorGetLineCount();
+  int curLine = editorGetCursorLine();
+
+  // --- TYPEWRITER MODE ---
+  if (writingMode == WritingMode::TYPEWRITER) {
+    int textAreaTop = drawEditorHeader(renderer, gpio, sw, tc, "[T]");
+
+    // Center the current line vertically
+    int textAreaHeight = sh - textAreaTop - 5;
+    int centerY = textAreaTop + (textAreaHeight / 2) - (lineHeight / 2);
+
+    // Draw thin horizontal rules above and below
+    clippedLine(renderer, 10, centerY - 4, sw - 10, centerY - 4, tc);
+    clippedLine(renderer, 10, centerY + lineHeight + 3, sw - 10, centerY + lineHeight + 3, tc);
+
+    // Draw only the current line
+    if (curLine < totalLines) {
+      drawEditorLine(renderer, curLine, 10, centerY, sw - 20, tc);
+    }
+
+    // Draw cursor
+    drawEditorCursor(renderer, centerY, lineHeight, sw, tc);
+
+    // Tell editor we show 1 visible line (prevents viewport scrolling logic from interfering)
+    editorSetVisibleLines(1);
+
+    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+    return;
+  }
+
+  // --- PAGINATION MODE ---
+  if (writingMode == WritingMode::PAGINATION) {
+    int textAreaTop = drawEditorHeader(renderer, gpio, sw, tc);
+
+    int textAreaBottom = sh - 22;  // Leave room for page indicator
+    int textAreaHeight = textAreaBottom - textAreaTop;
+    int linesPerPage = textAreaHeight / lineHeight;
+    if (linesPerPage < 1) linesPerPage = 1;
+
+    editorSetVisibleLines(linesPerPage);
+
+    int currentPage = curLine / linesPerPage;
+    int pageStart = currentPage * linesPerPage;
+    int totalPages = (totalLines + linesPerPage - 1) / linesPerPage;
+    if (totalPages < 1) totalPages = 1;
+
+    // Draw lines for this page
+    for (int i = 0; i < linesPerPage && (pageStart + i) < totalLines; i++) {
+      int yPos = textAreaTop + (i * lineHeight);
+      drawEditorLine(renderer, pageStart + i, 10, yPos, sw - 20, tc);
+    }
+
+    // Draw cursor if on this page
+    if (curLine >= pageStart && curLine < pageStart + linesPerPage) {
+      int cursorY = textAreaTop + ((curLine - pageStart) * lineHeight);
+      drawEditorCursor(renderer, cursorY, lineHeight, sw, tc);
+    }
+
+    // Page indicator in footer
+    char pageStr[16];
+    snprintf(pageStr, sizeof(pageStr), "Page %d/%d", currentPage + 1, totalPages);
+    int pageW = renderer.getTextAdvanceX(FONT_SMALL, pageStr);
+    drawClippedText(renderer, FONT_SMALL, (sw - pageW) / 2, sh - 18, pageStr, 0, tc);
+
+    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+    return;
+  }
+
+  // --- NORMAL / BLIND MODE (blind mode renders the same as normal when refresh happens) ---
+  const char* modeInd = (writingMode == WritingMode::BLIND) ? "[B]" : nullptr;
+  int textAreaTop = drawEditorHeader(renderer, gpio, sw, tc, modeInd);
+
+  int textAreaBottom = sh - 5;
+  int textAreaHeight = textAreaBottom - textAreaTop;
   int visibleLines = textAreaHeight / lineHeight;
 
-  // Tell editor how many lines are visible so scrolling works correctly
   editorSetVisibleLines(visibleLines);
 
   int vpStart = editorGetViewportStart();
-  int totalLines = editorGetLineCount();
-  int curLine = editorGetCursorLine();
-  int curCol = editorGetCursorCol();
   char* buf = editorGetBuffer();
   size_t bufLen = editorGetLength();
 
   // Draw visible lines
   for (int i = 0; i < visibleLines && (vpStart + i) < totalLines; i++) {
-    int lineIdx = vpStart + i;
-    int lineStart = editorGetLinePosition(lineIdx);
-    int lineEnd = (lineIdx + 1 < totalLines) ? editorGetLinePosition(lineIdx + 1) : (int)bufLen;
-
-    int dispEnd = lineEnd;
-    if (dispEnd > lineStart && buf[dispEnd - 1] == '\n') dispEnd--;
-
-    int len = dispEnd - lineStart;
-    if (len > 0) {
-      char lineBuf[256];
-      int copyLen = (len < (int)sizeof(lineBuf) - 1) ? len : (int)sizeof(lineBuf) - 1;
-      strncpy(lineBuf, buf + lineStart, copyLen);
-      lineBuf[copyLen] = '\0';
-
-      int yPos = textAreaTop + (i * lineHeight);
-      drawClippedText(renderer, FONT_BODY, 10, yPos, lineBuf, sw - 20, tc);
-    }
+    int yPos = textAreaTop + (i * lineHeight);
+    drawEditorLine(renderer, vpStart + i, 10, yPos, sw - 20, tc);
   }
 
-  // --- Draw cursor ---
+  // Draw cursor
   if (curLine >= vpStart && curLine < vpStart + visibleLines) {
-    int cursorScreenLine = curLine - vpStart;
-    int cursorY = textAreaTop + (cursorScreenLine * lineHeight);
-
-    int lineStart = editorGetLinePosition(curLine);
-    char prefix[256];
-    int prefixLen = (curCol < (int)sizeof(prefix) - 1) ? curCol : (int)sizeof(prefix) - 1;
-    strncpy(prefix, buf + lineStart, prefixLen);
-    prefix[prefixLen] = '\0';
-
-    int cursorX = 10 + renderer.getTextAdvanceX(FONT_BODY, prefix);
-    int cursorW = renderer.getSpaceWidth(FONT_BODY);
-    if (cursorW < 2) cursorW = 8;
-
-    if (cursorX >= 0 && cursorX + cursorW <= sw && cursorY >= 0 && cursorY + lineHeight <= sh) {
-      renderer.fillRect(cursorX, cursorY, cursorW, lineHeight, tc);
-    }
+    int cursorY = textAreaTop + ((curLine - vpStart) * lineHeight);
+    drawEditorCursor(renderer, cursorY, lineHeight, sw, tc);
   }
 
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
@@ -373,14 +462,27 @@ void drawSettingsMenu(GfxRenderer& renderer, HalGPIO& gpio) {
   drawBattery(renderer, gpio);
   clippedLine(renderer, 5, 32, sw - 5, 32, !darkMode);
 
-  // Setting items: Orientation, Dark Mode, Refresh Speed, Bluetooth, Clear Paired
-  static const char* labels[] = {"Orientation", "Dark Mode", "Refresh Speed", "Bluetooth", "Clear Paired"};
-  for (int i = 0; i < 5; i++) {
-    int yPos = 50 + (i * 38);
+  // Setting items: Orientation, Dark Mode, Refresh Speed, Writing Mode, Blind Delay, Bluetooth, Clear Paired
+  static const char* labels[] = {
+    "Orientation", "Dark Mode", "Refresh Speed",
+    "Writing Mode", "Blind Delay", "Bluetooth", "Clear Paired"
+  };
+  const int SETTINGS_COUNT = 7;
+
+  // Compute line height to fit all items — use smaller spacing if needed
+  int lineH = 38;
+  int listTop = 50;
+  if (listTop + SETTINGS_COUNT * lineH > sh - 70) {
+    lineH = (sh - 70 - listTop) / SETTINGS_COUNT;
+    if (lineH < 24) lineH = 24;
+  }
+
+  for (int i = 0; i < SETTINGS_COUNT; i++) {
+    int yPos = listTop + (i * lineH);
     bool sel = (i == settingsSelection);
 
     if (sel) {
-      clippedFillRect(renderer, 5, yPos - 5, sw - 10, 32, !darkMode);
+      clippedFillRect(renderer, 5, yPos - 5, sw - 10, lineH - 6, !darkMode);
       drawClippedText(renderer, FONT_UI, 15, yPos, labels[i], sw / 2 - 15, darkMode);
     } else {
       drawClippedText(renderer, FONT_UI, 15, yPos, labels[i], sw / 2 - 15, !darkMode);
@@ -403,7 +505,21 @@ void drawSettingsMenu(GfxRenderer& renderer, HalGPIO& gpio) {
         case RefreshSpeed::BALANCED: strcpy(val, "Balanced"); break;
         case RefreshSpeed::SAVING:   strcpy(val, "Battery Saver"); break;
       }
+    } else if (i == 3) {
+      switch (writingMode) {
+        case WritingMode::NORMAL:     strcpy(val, "Normal"); break;
+        case WritingMode::BLIND:      strcpy(val, "Blind"); break;
+        case WritingMode::TYPEWRITER: strcpy(val, "Typewriter"); break;
+        case WritingMode::PAGINATION: strcpy(val, "Pagination"); break;
+      }
     } else if (i == 4) {
+      switch (blindDelay) {
+        case BlindDelay::TWO_SEC:   strcpy(val, "2s"); break;
+        case BlindDelay::THREE_SEC: strcpy(val, "3s"); break;
+        case BlindDelay::FIVE_SEC:  strcpy(val, "5s"); break;
+        case BlindDelay::TEN_SEC:   strcpy(val, "10s"); break;
+      }
+    } else if (i == 6) {
       std::string storedAddr, storedName;
       if (getStoredDevice(storedAddr, storedName)) {
         snprintf(val, sizeof(val), "%s", storedName.c_str());

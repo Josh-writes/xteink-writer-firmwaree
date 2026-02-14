@@ -41,6 +41,34 @@ inline uint16_t refreshCooldownMs(RefreshSpeed speed) {
   }
 }
 
+// --- Writing Modes ---
+// Control how the editor renders text to reduce unnecessary e-ink refreshes.
+enum class WritingMode : uint8_t {
+  NORMAL     = 0,   // Standard scrolling editor
+  BLIND      = 1,   // No refreshes while typing; refresh after inactivity delay
+  TYPEWRITER = 2,   // Shows only current line centered on screen
+  PAGINATION = 3    // Page-based display instead of scrolling
+};
+
+// --- Blind Mode Delay ---
+// How long to wait after last keystroke before refreshing in blind mode.
+enum class BlindDelay : uint8_t {
+  TWO_SEC   = 0,
+  THREE_SEC = 1,
+  FIVE_SEC  = 2,
+  TEN_SEC   = 3
+};
+
+inline uint16_t blindDelayMs(BlindDelay d) {
+  switch (d) {
+    case BlindDelay::TWO_SEC:   return 2000;
+    case BlindDelay::THREE_SEC: return 3000;
+    case BlindDelay::FIVE_SEC:  return 5000;
+    case BlindDelay::TEN_SEC:   return 10000;
+    default:                    return 3000;
+  }
+}
+
 // --- BLE Connection State ---
 enum class BLEState : uint8_t {
   DISCONNECTED,
@@ -83,8 +111,10 @@ static constexpr int MAX_LINES = 1024;
 
 // --- HID Keycodes ---
 static constexpr uint8_t HID_KEY_A          = 0x04;
+static constexpr uint8_t HID_KEY_B          = 0x05;
 static constexpr uint8_t HID_KEY_D          = 0x07;
 static constexpr uint8_t HID_KEY_N          = 0x11;
+static constexpr uint8_t HID_KEY_P          = 0x13;
 static constexpr uint8_t HID_KEY_Q          = 0x14;
 static constexpr uint8_t HID_KEY_R          = 0x15;
 static constexpr uint8_t HID_KEY_S          = 0x16;
