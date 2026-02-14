@@ -18,7 +18,6 @@ extern bool cleanMode;
 extern bool deleteConfirmPending;
 extern WritingMode writingMode;
 extern BlindDelay blindDelay;
-extern bool blindScreenActive;
 
 // External functions
 bool getStoredDevice(std::string& address, std::string& name);
@@ -339,66 +338,6 @@ void drawTextEditor(GfxRenderer& renderer, HalGPIO& gpio) {
 
   if (darkMode) clippedFillRect(renderer, 0, 0, sw, sh, true);
 
-  // --- BLIND MODE: sunglasses screen while typing ---
-  if (writingMode == WritingMode::BLIND && blindScreenActive) {
-    int cx = sw / 2;
-    int cy = (int)(sh * 0.34);
-
-    // Sunglasses dimensions — scale to screen width
-    int lensW = sw / 4;
-    int lensH = (int)(lensW * 0.55);
-    int gap = lensW / 4;
-    int armLen = (int)(lensW * 0.5);
-    int frameT = 3;  // frame thickness
-
-    // Left lens
-    int lx = cx - gap / 2 - lensW;
-    clippedFillRect(renderer, lx, cy, lensW, lensH, tc);
-
-    // Right lens
-    int rx = cx + gap / 2;
-    clippedFillRect(renderer, rx, cy, lensW, lensH, tc);
-
-    // Bridge connecting lenses
-    int bridgeY = cy + lensH / 3;
-    clippedFillRect(renderer, lx + lensW, bridgeY, gap, frameT, tc);
-
-    // Left arm
-    clippedFillRect(renderer, lx - armLen, bridgeY, armLen, frameT, tc);
-
-    // Right arm
-    clippedFillRect(renderer, rx + lensW, bridgeY, armLen, frameT, tc);
-
-    // Smile below — three line segments forming a gentle curve
-    int smileTop = cy + lensH + (int)(lensH * 0.6);
-    int smileW = (int)(lensW * 1.2);
-    int smileDepth = (int)(lensH * 0.5);
-    int smL = cx - smileW;      // smile left
-    int smR = cx + smileW;      // smile right
-    int smM = cx;               // smile middle (bottom of curve)
-    int smMy = smileTop + smileDepth;
-
-    // Left curve segment
-    clippedLine(renderer, smL, smileTop, smM, smMy, tc);
-    // Right curve segment
-    clippedLine(renderer, smM, smMy, smR, smileTop, tc);
-
-    // "writing blind" text centered below the face
-    const char* label = "writing blind";
-    int labelW = renderer.getTextAdvanceX(FONT_UI, label);
-    int labelY = smMy + (int)(lensH * 0.8);
-    drawClippedText(renderer, FONT_UI, (sw - labelW) / 2, labelY, label, 0, tc);
-
-    // "blind mode" subtitle
-    const char* subtitle = "blind mode";
-    int subW = renderer.getTextAdvanceX(FONT_SMALL, subtitle);
-    int subY = labelY + renderer.getLineHeight(FONT_UI) + 4;
-    drawClippedText(renderer, FONT_SMALL, (sw - subW) / 2, subY, subtitle, 0, tc);
-
-    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
-    return;
-  }
-
   int lineHeight = renderer.getLineHeight(FONT_BODY);
   if (lineHeight <= 0) lineHeight = 20;
   int totalLines = editorGetLineCount();
@@ -470,7 +409,14 @@ void drawTextEditor(GfxRenderer& renderer, HalGPIO& gpio) {
   }
 
   // --- NORMAL / BLIND MODE (blind mode renders the same as normal when refresh happens) ---
-  int textAreaTop = drawEditorHeader(renderer, gpio, sw, tc);
+  const char* blindHint = nullptr;
+  char blindHintBuf[24];
+  if (writingMode == WritingMode::BLIND) {
+    int delaySec = blindDelayMs(blindDelay) / 1000;
+    snprintf(blindHintBuf, sizeof(blindHintBuf), "pause %ds to refresh", delaySec);
+    blindHint = blindHintBuf;
+  }
+  int textAreaTop = drawEditorHeader(renderer, gpio, sw, tc, blindHint);
 
   int textAreaBottom = sh - 5;
   int textAreaHeight = textAreaBottom - textAreaTop;

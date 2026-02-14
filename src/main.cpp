@@ -57,7 +57,6 @@ bool deleteConfirmPending = false;
 WritingMode writingMode = WritingMode::NORMAL;
 BlindDelay blindDelay = BlindDelay::THREE_SEC;
 unsigned long lastKeystrokeMs = 0;
-bool blindScreenActive = false;  // true = sunglasses showing, false = text showing
 
 // --- Screen update ---
 static void updateScreen() {
@@ -577,26 +576,24 @@ void loop() {
   // Cooldown only applies to the text editor — all menus refresh instantly for responsiveness
   bool criticalUpdate = (currentState != UIState::TEXT_EDITOR);
 
-  // Blind mode only applies in the editor — reset when navigating away
-  if (criticalUpdate) blindScreenActive = false;
+  // Reset blind mode keystroke timer on editor entry so the first render isn't suppressed
+  static UIState prevRefreshState = UIState::MAIN_MENU;
+  if (currentState == UIState::TEXT_EDITOR && prevRefreshState != UIState::TEXT_EDITOR) {
+    lastKeystrokeMs = 0;
+  }
+  prevRefreshState = currentState;
+
+
 
   if (screenDirty) {
     if (writingMode == WritingMode::BLIND && currentState == UIState::TEXT_EDITOR) {
-      // Blind mode: two refresh triggers per typing burst:
-      // 1. When typing starts → show sunglasses screen
-      // 2. When typing stops (after delay) → show accumulated text
+      // Blind mode: suppress refresh while typing, refresh after inactivity delay.
+      // Screen stays on whatever was last displayed until the user pauses.
       if ((now - lastKeystrokeMs) >= blindDelayMs(blindDelay)) {
-        // User stopped typing — show text
-        blindScreenActive = false;
-        updateScreen();
-        lastRefreshDoneMs = millis();
-      } else if (!blindScreenActive) {
-        // User just started typing — show blind screen once
-        blindScreenActive = true;
         updateScreen();
         lastRefreshDoneMs = millis();
       }
-      // else: typing continues, blind screen already showing — suppress
+      // else: user is typing — suppress refresh, screenDirty stays true
     } else {
       bool cooldownMet = (now - lastRefreshDoneMs >= refreshCooldownMs(refreshSpeed));
       if (criticalUpdate || cooldownMet) {
