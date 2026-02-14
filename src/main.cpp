@@ -57,6 +57,7 @@ bool deleteConfirmPending = false;
 WritingMode writingMode = WritingMode::NORMAL;
 BlindDelay blindDelay = BlindDelay::THREE_SEC;
 unsigned long lastKeystrokeMs = 0;
+bool blindScreenActive = false;  // true = sunglasses showing, false = text showing
 
 // --- Screen update ---
 static void updateScreen() {
@@ -575,12 +576,21 @@ void loop() {
 
   if (screenDirty) {
     if (writingMode == WritingMode::BLIND && currentState == UIState::TEXT_EDITOR) {
-      // Blind mode: suppress refresh while user is actively typing.
-      // screenDirty stays true so the refresh happens once they pause.
+      // Blind mode: two refresh triggers per typing burst:
+      // 1. When typing starts → show sunglasses screen
+      // 2. When typing stops (after delay) → show accumulated text
       if ((now - lastKeystrokeMs) >= blindDelayMs(blindDelay)) {
+        // User stopped typing — show text
+        blindScreenActive = false;
+        updateScreen();
+        lastRefreshDoneMs = millis();
+      } else if (!blindScreenActive) {
+        // User just started typing — show blind screen once
+        blindScreenActive = true;
         updateScreen();
         lastRefreshDoneMs = millis();
       }
+      // else: typing continues, blind screen already showing — suppress
     } else {
       bool cooldownMet = (now - lastRefreshDoneMs >= refreshCooldownMs(refreshSpeed));
       if (criticalUpdate || cooldownMet) {

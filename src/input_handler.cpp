@@ -14,6 +14,7 @@ extern bool cleanMode;
 extern bool deleteConfirmPending;
 extern WritingMode writingMode;
 extern BlindDelay blindDelay;
+extern bool blindScreenActive;
 
 // External functions
 void storePairedDevice(const std::string& address, const std::string& name);
@@ -147,16 +148,19 @@ static void handleEditorKey(uint8_t keyCode, uint8_t modifiers) {
     }
     if (keyCode == HID_KEY_B) {
       writingMode = (writingMode == WritingMode::BLIND) ? WritingMode::NORMAL : WritingMode::BLIND;
+      blindScreenActive = false;
       screenDirty = true;
       return;
     }
     if (keyCode == HID_KEY_T) {
       writingMode = (writingMode == WritingMode::TYPEWRITER) ? WritingMode::NORMAL : WritingMode::TYPEWRITER;
+      blindScreenActive = false;
       screenDirty = true;
       return;
     }
     if (keyCode == HID_KEY_P) {
       writingMode = (writingMode == WritingMode::PAGINATION) ? WritingMode::NORMAL : WritingMode::PAGINATION;
+      blindScreenActive = false;
       screenDirty = true;
       return;
     }
