@@ -574,6 +574,9 @@ void loop() {
   // Cooldown only applies to the text editor — all menus refresh instantly for responsiveness
   bool criticalUpdate = (currentState != UIState::TEXT_EDITOR);
 
+  // Blind mode only applies in the editor — reset when navigating away
+  if (criticalUpdate) blindScreenActive = false;
+
   if (screenDirty) {
     if (writingMode == WritingMode::BLIND && currentState == UIState::TEXT_EDITOR) {
       // Blind mode: two refresh triggers per typing burst:
