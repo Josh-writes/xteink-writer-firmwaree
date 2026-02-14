@@ -384,15 +384,12 @@ void drawTextEditor(GfxRenderer& renderer, HalGPIO& gpio) {
 
   // --- TYPEWRITER MODE ---
   if (writingMode == WritingMode::TYPEWRITER) {
-    int textAreaTop = drawEditorHeader(renderer, gpio, sw, tc, "[T]");
+    // In clean mode (Ctrl+Z): just text on blank screen, no header
+    int textAreaTop = cleanMode ? 0 : drawEditorHeader(renderer, gpio, sw, tc, "[T]");
 
     // Center the current line vertically
-    int textAreaHeight = sh - textAreaTop - 5;
+    int textAreaHeight = sh - textAreaTop;
     int centerY = textAreaTop + (textAreaHeight / 2) - (lineHeight / 2);
-
-    // Draw thin horizontal rules above and below
-    clippedLine(renderer, 10, centerY - 4, sw - 10, centerY - 4, tc);
-    clippedLine(renderer, 10, centerY + lineHeight + 3, sw - 10, centerY + lineHeight + 3, tc);
 
     // Draw only the current line
     if (curLine < totalLines) {
@@ -402,7 +399,6 @@ void drawTextEditor(GfxRenderer& renderer, HalGPIO& gpio) {
     // Draw cursor
     drawEditorCursor(renderer, centerY, lineHeight, sw, tc);
 
-    // Tell editor we show 1 visible line (prevents viewport scrolling logic from interfering)
     editorSetVisibleLines(1);
 
     renderer.displayBuffer(HalDisplay::FAST_REFRESH);
