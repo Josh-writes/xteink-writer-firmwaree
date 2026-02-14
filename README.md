@@ -7,12 +7,12 @@ A dedicated writing firmware for the **Xteink X4** e-paper device. Pairs with an
 - **Note Management** — browse, create, rename, and delete notes from an SD card
 - **Named Notes** — each note has a title stored in the file; shown in the browser and editable without touching body text
 - **Text Editor** — cursor navigation, word-wrap, fast e-paper refresh
-- **Auto-Save** — content is silently saved to SD card 2 seconds after you stop typing; no manual save required. Every exit path (back button, Esc, power button, sleep, restart) also saves automatically
+- **Auto-Save** — content is silently saved to SD card after 10 seconds of idle or every 2 minutes during continuous typing; no manual save required. Every exit path (back button, Esc, power button, sleep, restart) also saves automatically
 - **Safe Writes** — saves use a write-verify + `.bak` rotation pattern; a failed or interrupted write never destroys the previous version. Orphaned files from a crash are recovered automatically on next boot
 - **Clean Mode** — hides all UI chrome while editing so only your text is on screen (Ctrl+Z to toggle)
 - **Dark Mode** — inverted display
 - **Display Orientation** — portrait, landscape, and inverted variants
-- **Power Management** — CPU light-sleeps between events to extend battery life
+- **Power Management** — CPU light-sleeps between events, SD card sleeps between accesses, display analog circuits power down after each refresh, and the device enters deep sleep after 5 minutes of inactivity
 - **WiFi Sync** — one-button backup of all notes to your PC over WiFi. Saves network credentials for instant reconnect. Read-only server — nothing on the device can be modified over the network
 - **Standalone Build** — all libraries are bundled in the repo; no sibling projects required
 
@@ -68,6 +68,7 @@ The device remembers the paired keyboard and reconnects automatically on subsequ
 | Key | Action |
 |-----|--------|
 | Up / Down | Navigate |
+| Left / Right | Also navigate (convenient in landscape) |
 | Enter | Select |
 
 Options: **Browse Notes**, **New Note**, **Settings**, **Sync**
@@ -77,6 +78,7 @@ Options: **Browse Notes**, **New Note**, **Settings**, **Sync**
 | Key | Action |
 |-----|--------|
 | Up / Down | Navigate list |
+| Left / Right | Also navigate (convenient in landscape) |
 | Enter | Open note |
 | Ctrl+T | Edit title of selected note |
 | Ctrl+D | Delete selected note (confirmation required) |
@@ -96,7 +98,7 @@ When delete is pending, the footer shows `Delete? Enter:Yes  Esc:No`. Press Ente
 | Ctrl+Z | Toggle clean mode (hides UI chrome) |
 | Esc / Back button | Save and return to file browser |
 
-Auto-save runs silently 2 seconds after your last keystroke — Ctrl+S is only needed if you want to save immediately.
+Auto-save runs silently after 10 seconds of idle or every 2 minutes during continuous typing — Ctrl+S is only needed if you want to save immediately.
 
 ### Title Edit
 
@@ -229,7 +231,7 @@ xteink-writer-firmware/
 
 **Physical buttons not responding**
 - BLE scanning can occasionally interfere with the ADC button reads
-- Hold the BACK button for 5 seconds to restart the device
+- Hold the BACK button for 3 seconds to restart the device
 
 **Display appears frozen**
 - E-paper refresh takes ~430ms — wait for it to complete before pressing more keys
