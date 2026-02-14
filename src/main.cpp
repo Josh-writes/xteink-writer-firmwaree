@@ -109,9 +109,28 @@ void setup() {
   gpio.begin();
   display.begin();
 
-  renderer.setOrientation(GfxRenderer::Portrait);
   renderer.setFadingFix(true);  // Power down display analog circuits after each refresh — reduces idle drain
   rendererSetup(renderer);
+
+  // Load persisted UI settings from NVS early so startup screen uses saved orientation
+  uiPrefs.begin("ui_prefs", false);
+  currentOrientation = static_cast<Orientation>(uiPrefs.getUChar("orient", 0));
+  darkMode = uiPrefs.getBool("darkMode", false);
+  refreshSpeed = static_cast<RefreshSpeed>(uiPrefs.getUChar("refreshSpd", 1)); // default BALANCED
+  writingMode = static_cast<WritingMode>(uiPrefs.getUChar("writeMode", 0));
+  blindDelay = static_cast<BlindDelay>(uiPrefs.getUChar("blindDly", 1)); // default THREE_SEC
+
+  // Apply saved orientation
+  {
+    GfxRenderer::Orientation gfxOrient;
+    switch (currentOrientation) {
+      case Orientation::PORTRAIT:      gfxOrient = GfxRenderer::Portrait; break;
+      case Orientation::LANDSCAPE_CW:  gfxOrient = GfxRenderer::LandscapeClockwise; break;
+      case Orientation::PORTRAIT_INV:  gfxOrient = GfxRenderer::PortraitInverted; break;
+      case Orientation::LANDSCAPE_CCW: gfxOrient = GfxRenderer::LandscapeCounterClockwise; break;
+    }
+    renderer.setOrientation(gfxOrient);
+  }
 
   editorInit();
   inputSetup();
@@ -136,19 +155,11 @@ void setup() {
     }
   }
 
-  // Load persisted UI settings from NVS
-  uiPrefs.begin("ui_prefs", false);
-  currentOrientation = static_cast<Orientation>(uiPrefs.getUChar("orient", 0));
-  darkMode = uiPrefs.getBool("darkMode", false);
-  refreshSpeed = static_cast<RefreshSpeed>(uiPrefs.getUChar("refreshSpd", 1)); // default BALANCED
-  writingMode = static_cast<WritingMode>(uiPrefs.getUChar("writeMode", 0));
-  blindDelay = static_cast<BlindDelay>(uiPrefs.getUChar("blindDly", 1)); // default THREE_SEC
-
   // Initialize auto-reconnect to enabled by default
   autoReconnectEnabled = true;
 
   DBG_PRINTLN("MicroSlate ready.");
-  
+
   // Show a quick wake-up screen to indicate the device is starting up
   renderer.clearScreen();
   
