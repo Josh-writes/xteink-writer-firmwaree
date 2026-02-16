@@ -7,9 +7,8 @@ A dedicated writing firmware for the **Xteink X4** e-paper device. Pairs with an
 - **Note Management** — browse, create, rename, and delete notes from an SD card
 - **Named Notes** — each note has a title stored in the file; shown in the browser and editable without touching body text
 - **Text Editor** — cursor navigation, word-wrap, fast e-paper refresh
-- **Writing Modes** — four display modes to suit different writing styles and save battery:
+- **Writing Modes** — three display modes to suit different writing styles:
   - *Scroll* — standard scrolling editor (default)
-  - *Blind* — screen freezes while typing; refreshes to show accumulated text after a configurable delay of inactivity. Biggest battery saver
   - *Typewriter* — shows only the current line centered on a blank screen. Focused, distraction-free single-line writing
   - *Pagination* — page-based display instead of scrolling. Clean page flips instead of per-line scroll refreshes
 - **Auto-Save** — content is silently saved to SD card after 10 seconds of idle or every 2 minutes during continuous typing; no manual save required. Every exit path (back button, Esc, power button, sleep, restart) also saves automatically
@@ -17,7 +16,7 @@ A dedicated writing firmware for the **Xteink X4** e-paper device. Pairs with an
 - **Clean Mode** — hides all UI chrome while editing so only your text is on screen (Ctrl+Z to toggle)
 - **Dark Mode** — inverted display
 - **Display Orientation** — portrait, landscape, and inverted variants
-- **Power Management** — SD card sleeps between accesses, display analog circuits power down after each refresh, and the device enters deep sleep after 5 minutes of inactivity
+- **Power Management** — ESP-IDF light sleep between loop iterations (CPU drops to 10MHz), BLE modem sleep keeps the radio alive, SD card sleeps between accesses, display analog circuits power down after each refresh, and the device enters deep sleep after 5 minutes of inactivity
 - **WiFi Sync** — one-button backup of all notes to your PC over WiFi. Saves network credentials for instant reconnect. Read-only server — nothing on the device can be modified over the network
 - **Standalone Build** — all libraries are bundled in the repo; no sibling projects required
 
@@ -98,25 +97,22 @@ When delete is pending, the footer shows `Delete? Enter:Yes  Esc:No`. Press Ente
 | Arrow keys | Move cursor |
 | Home / End | Start / end of line |
 | Backspace / Delete | Remove characters |
-| Tab | Cycle writing mode (Scroll → Blind → Typewriter → Pagination) |
+| Tab | Cycle writing mode (Scroll → Typewriter → Pagination) |
 | Ctrl+S | Save manually |
 | Ctrl+N | Edit note title |
 | Ctrl+Z | Toggle clean mode (hides UI chrome) |
-| Ctrl+B | Toggle Blind mode |
 | Ctrl+T | Toggle Typewriter mode |
 | Ctrl+P | Toggle Pagination mode |
 | Ctrl+Left / Right | Jump pages (Pagination mode only) |
 | Esc / Back button | Save and return to file browser |
 
-The current writing mode is shown in the header: **[S]** Scroll, **[B]** Blind, **[T]** Typewriter, **[P]** Pagination.
+The current writing mode is shown in the header: **[S]** Scroll, **[T]** Typewriter, **[P]** Pagination.
 
 Auto-save runs silently after 10 seconds of idle or every 2 minutes during continuous typing — Ctrl+S is only needed if you want to save immediately.
 
 ### Writing Modes
 
 **Scroll [S]** — Standard scrolling editor. Text scrolls as the cursor moves down the page.
-
-**Blind [B]** — The screen freezes while you type. No display refreshes occur during active typing, which significantly extends battery life. After a configurable delay of inactivity (default 3 seconds), the screen refreshes to show all accumulated text. The delay is adjustable in Settings under "Blind Delay" (2s, 3s, 5s, 10s).
 
 **Typewriter [T]** — Only the current line is shown, centered vertically on a blank screen. When you press Enter, the previous line disappears and a fresh line appears. Text is still saved to the buffer normally. Combine with Clean Mode (Ctrl+Z) for a completely minimal writing experience.
 
@@ -141,9 +137,7 @@ Navigate with all four direction buttons (or Up/Down on keyboard). Press Enter (
 |---------|--------|
 | Orientation | Portrait, Landscape CW, Inverted, Landscape CCW |
 | Dark Mode | Light / Dark |
-| Refresh Speed | Fast (~2.3/sec), Balanced (~1.5/sec, default), Battery Saver (~0.85/sec) |
-| Writing Mode | Normal, Blind, Typewriter, Pagination |
-| Blind Delay | 2s, 3s (default), 5s, 10s |
+| Writing Mode | Normal, Typewriter, Pagination |
 | Bluetooth | Opens Bluetooth Settings submenu |
 | Clear Paired | Removes stored keyboard pairing |
 
