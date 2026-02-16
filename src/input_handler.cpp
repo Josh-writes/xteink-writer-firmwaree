@@ -42,6 +42,7 @@ static void openTitleEdit(const char* currentTitle, UIState returnTo);
 extern UIState currentState;
 extern int mainMenuSelection;
 extern int selectedFileIndex;
+extern int selectedBookIndex;
 extern int settingsSelection;
 extern int bluetoothDeviceSelection;
 extern Orientation currentOrientation;
@@ -280,10 +281,10 @@ static void dispatchEvent(const KeyEvent& event) {
   switch (currentState) {
     case UIState::MAIN_MENU: {
       if (event.keyCode == HID_KEY_DOWN) {
-        mainMenuSelection = (mainMenuSelection + 1) % 4;
+        mainMenuSelection = (mainMenuSelection + 1) % 5;
         screenDirty = true;
       } else if (event.keyCode == HID_KEY_UP) {
-        mainMenuSelection = (mainMenuSelection - 1 + 4) % 4;
+        mainMenuSelection = (mainMenuSelection - 1 + 5) % 5;
         screenDirty = true;
       } else if (event.keyCode == HID_KEY_ENTER) {
         if (mainMenuSelection == 0) {
@@ -298,6 +299,11 @@ static void dispatchEvent(const KeyEvent& event) {
         } else if (mainMenuSelection == 3) {
           wifiSyncStart();
           currentState = UIState::WIFI_SYNC;
+          screenDirty = true;
+        } else if (mainMenuSelection == 4) {
+          refreshBookList();
+          selectedBookIndex = 0;
+          currentState = UIState::BOOK_BROWSER;
           screenDirty = true;
         }
       }
@@ -456,6 +462,44 @@ static void dispatchEvent(const KeyEvent& event) {
 
     case UIState::WIFI_SYNC: {
       syncHandleKey(event.keyCode, event.modifiers);
+      break;
+    }
+
+    case UIState::BOOK_BROWSER: {
+      int bc = getBookCount();
+      if (event.keyCode == HID_KEY_DOWN && bc > 0) {
+        selectedBookIndex = (selectedBookIndex + 1) % bc;
+        screenDirty = true;
+      } else if (event.keyCode == HID_KEY_UP && bc > 0) {
+        selectedBookIndex = (selectedBookIndex - 1 + bc) % bc;
+        screenDirty = true;
+      } else if (event.keyCode == HID_KEY_ENTER && bc > 0) {
+        FileInfo* books = getBookList();
+        loadBook(books[selectedBookIndex].filename);
+      } else if (event.keyCode == HID_KEY_ESCAPE) {
+        currentState = UIState::MAIN_MENU;
+        screenDirty = true;
+      }
+      break;
+    }
+
+    case UIState::BOOK_READER: {
+      int pageSize = editorGetStoredVisibleLines();
+      if (pageSize < 1) pageSize = 1;
+
+      if (event.keyCode == HID_KEY_RIGHT || event.keyCode == HID_KEY_DOWN) {
+        // Page forward
+        for (int i = 0; i < pageSize; i++) editorMoveCursorDown();
+        screenDirty = true;
+      } else if (event.keyCode == HID_KEY_LEFT || event.keyCode == HID_KEY_UP) {
+        // Page back
+        for (int i = 0; i < pageSize; i++) editorMoveCursorUp();
+        screenDirty = true;
+      } else if (event.keyCode == HID_KEY_ESCAPE) {
+        saveBookPosition();
+        currentState = UIState::BOOK_BROWSER;
+        screenDirty = true;
+      }
       break;
     }
 

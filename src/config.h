@@ -12,7 +12,9 @@ enum class UIState {
   NEW_FILE,
   SETTINGS,
   BLUETOOTH_SETTINGS,
-  WIFI_SYNC
+  WIFI_SYNC,
+  BOOK_BROWSER,
+  BOOK_READER
 };
 
 // --- Display Orientation ---
@@ -63,6 +65,7 @@ static constexpr unsigned long AUTO_SAVE_MAX_MS  = 120000;   // Hard cap: save e
 // --- Buffer/Queue Sizes ---
 static constexpr size_t TEXT_BUFFER_SIZE = 16384;
 static constexpr int MAX_FILES = 50;
+static constexpr int MAX_BOOKS = 50;
 static constexpr int INPUT_QUEUE_SIZE = 50;
 static constexpr int MAX_LINES = 1024;
 

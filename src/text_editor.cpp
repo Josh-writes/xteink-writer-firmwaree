@@ -133,6 +133,18 @@ void editorLoadBuffer(size_t length) {
   ensureCursorVisible(storedVisibleLines);
 }
 
+void editorLoadBufferAtPosition(size_t length, int cursorPos) {
+  textLength = length;
+  textBuffer[textLength] = '\0';
+  if (cursorPos < 0) cursorPos = 0;
+  if (cursorPos > (int)textLength) cursorPos = (int)textLength;
+  cursorPosition = cursorPos;
+  viewportStartLine = 0;
+  lineBreaksDirty = true;
+  editorRecalculateLines();
+  ensureCursorVisible(storedVisibleLines);
+}
+
 char* editorGetBuffer() { return textBuffer; }
 size_t editorGetLength() { return textLength; }
 int editorGetCursorPosition() { return cursorPosition; }

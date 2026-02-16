@@ -40,6 +40,7 @@ static Preferences uiPrefs;
 UIState currentState = UIState::MAIN_MENU;
 int mainMenuSelection = 0;
 int selectedFileIndex = 0;
+int selectedBookIndex = 0;
 int settingsSelection = 0;
 int bluetoothDeviceSelection = 0;  // For Bluetooth device selection
 Orientation currentOrientation = Orientation::PORTRAIT;
@@ -92,6 +93,8 @@ static void updateScreen() {
     case UIState::SETTINGS:          drawSettingsMenu(renderer, gpio); break;
     case UIState::BLUETOOTH_SETTINGS: drawBluetoothSettings(renderer, gpio); break;
     case UIState::WIFI_SYNC:          drawSyncScreen(renderer, gpio); break;
+    case UIState::BOOK_BROWSER:      drawBookBrowser(renderer, gpio); break;
+    case UIState::BOOK_READER:       drawBookReader(renderer, gpio); break;
     default: break;
   }
 }
@@ -167,6 +170,9 @@ void enterDeepSleep(SleepReason reason) {
   if (currentState == UIState::TEXT_EDITOR && editorHasUnsavedChanges()) {
     saveCurrentFile();
   }
+  if (currentState == UIState::BOOK_READER) {
+    saveBookPosition();
+  }
 
   display.deepSleep();     // Power down display first
   gpio.startDeepSleep();   // Waits for power button release, then sleeps
@@ -225,6 +231,9 @@ static void processPhysicalButtons() {
         if (currentState == UIState::TEXT_EDITOR && editorHasUnsavedChanges()) {
           saveCurrentFile();
         }
+        if (currentState == UIState::BOOK_READER) {
+          saveBookPosition();
+        }
         currentState = UIState::MAIN_MENU;
         screenDirty = true;
       }
@@ -248,6 +257,9 @@ static void processPhysicalButtons() {
       DBG_PRINTLN("BACK held for 5s — restarting device...");
       if (currentState == UIState::TEXT_EDITOR && editorHasUnsavedChanges()) {
         saveCurrentFile();
+      }
+      if (currentState == UIState::BOOK_READER) {
+        saveBookPosition();
       }
       delay(100);
       ESP.restart();
@@ -408,6 +420,39 @@ static void processPhysicalButtons() {
         enqueueKeyEvent(HID_KEY_ESCAPE, 0, false);
       }
       break;
+
+    case UIState::BOOK_BROWSER:
+      if (((btnUp && !btnUpLast) || (btnRight && !btnRightLast)) && getBookCount() > 0) {
+        enqueueKeyEvent(HID_KEY_UP, 0, true);
+        enqueueKeyEvent(HID_KEY_UP, 0, false);
+      }
+      if (((btnDown && !btnDownLast) || (btnLeft && !btnLeftLast)) && getBookCount() > 0) {
+        enqueueKeyEvent(HID_KEY_DOWN, 0, true);
+        enqueueKeyEvent(HID_KEY_DOWN, 0, false);
+      }
+      if (btnConfirm && !btnConfirmLast && getBookCount() > 0) {
+        enqueueKeyEvent(HID_KEY_ENTER, 0, true);
+        enqueueKeyEvent(HID_KEY_ENTER, 0, false);
+      }
+      if (btnBack && !btnBackLast) {
+        enqueueKeyEvent(HID_KEY_ESCAPE, 0, true);
+        enqueueKeyEvent(HID_KEY_ESCAPE, 0, false);
+      }
+      break;
+
+    case UIState::BOOK_READER: {
+      auto fireKey = [](uint8_t k) {
+        enqueueKeyEvent(k, 0, true);
+        enqueueKeyEvent(k, 0, false);
+      };
+      // Left/Up = page back, Right/Down = page forward
+      if (btnLeft && !btnLeftLast)   fireKey(HID_KEY_LEFT);
+      if (btnUp && !btnUpLast)       fireKey(HID_KEY_UP);
+      if (btnRight && !btnRightLast) fireKey(HID_KEY_RIGHT);
+      if (btnDown && !btnDownLast)   fireKey(HID_KEY_DOWN);
+      if (btnBack && !btnBackLast)   fireKey(HID_KEY_ESCAPE);
+      break;
+    }
 
     default:
       break;

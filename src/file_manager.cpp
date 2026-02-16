@@ -2,14 +2,21 @@
 #include "text_editor.h"
 #include <Arduino.h>
 #include <SDCardManager.h>
+#include <Preferences.h>
 #include <cstring>
 
 // --- File list ---
 static FileInfo fileList[MAX_FILES];
 static int fileCount = 0;
 
+// --- Book list ---
+static FileInfo bookList[MAX_BOOKS];
+static int bookCount = 0;
+static Preferences bookPrefs;
+
 // Shared state
 extern UIState currentState;
+extern bool screenDirty;
 
 // Convert filename to a readable display title.
 // "my_note_2.txt" -> "My Note 2"
@@ -78,6 +85,9 @@ void fileManagerSetup() {
 
   if (!SdMan.exists("/notes")) {
     SdMan.mkdir("/notes");
+  }
+  if (!SdMan.exists("/books")) {
+    SdMan.mkdir("/books");
   }
 
   DBG_PRINTLN("SD Card initialized");
@@ -232,4 +242,113 @@ void deleteFile(const char* filename) {
   refreshFileList();
   SdMan.sleep();
   DBG_PRINTF("Deleted: %s\n", filename);
+}
+
+// ===========================================================================
+// Book reader functions
+// ===========================================================================
+
+void refreshBookList() {
+  bookCount = 0;
+
+  auto root = SdMan.open("/books");
+  if (!root || !root.isDirectory()) {
+    if (root) root.close();
+    return;
+  }
+
+  root.rewindDirectory();
+  char name[256];
+
+  for (auto file = root.openNextFile(); file; file = root.openNextFile()) {
+    file.getName(name, sizeof(name));
+    if (name[0] == '.' || bookCount >= MAX_BOOKS) {
+      file.close();
+      if (bookCount >= MAX_BOOKS) break;
+      continue;
+    }
+
+    int nameLen = strlen(name);
+    if (nameLen > 4 && strcmp(name + nameLen - 4, ".txt") == 0) {
+      strncpy(bookList[bookCount].filename, name, MAX_FILENAME_LEN - 1);
+      bookList[bookCount].filename[MAX_FILENAME_LEN - 1] = '\0';
+
+      filenameToTitle(name, bookList[bookCount].title, MAX_TITLE_LEN);
+      bookList[bookCount].modTime = 0;
+      bookCount++;
+    }
+    file.close();
+  }
+  root.close();
+  SdMan.sleep();
+
+  DBG_PRINTF("Book listing: %d books found\n", bookCount);
+}
+
+int getBookCount() { return bookCount; }
+FileInfo* getBookList() { return bookList; }
+
+// NVS key from filename: strip .txt, truncate to 15 chars
+static void bookNvsKey(const char* filename, char* key, int maxLen) {
+  int j = 0;
+  for (int i = 0; filename[i] != '\0' && filename[i] != '.' && j < maxLen - 1; i++) {
+    key[j++] = filename[i];
+  }
+  key[j] = '\0';
+}
+
+void saveBookPosition() {
+  const char* filename = editorGetCurrentFile();
+  if (filename[0] == '\0') return;
+
+  char key[16];
+  bookNvsKey(filename, key, sizeof(key));
+
+  bookPrefs.begin("book_pos", false);
+  bookPrefs.putInt(key, editorGetCursorPosition());
+  bookPrefs.end();
+
+  DBG_PRINTF("Saved book position: %s = %d\n", key, editorGetCursorPosition());
+}
+
+int loadBookPosition(const char* filename) {
+  char key[16];
+  bookNvsKey(filename, key, sizeof(key));
+
+  bookPrefs.begin("book_pos", true);
+  int pos = bookPrefs.getInt(key, 0);
+  bookPrefs.end();
+
+  return pos;
+}
+
+void loadBook(const char* filename) {
+  char path[320];
+  snprintf(path, sizeof(path), "/books/%s", filename);
+
+  auto file = SdMan.open(path, O_RDONLY);
+  if (!file) {
+    DBG_PRINTF("Could not open book: %s\n", path);
+    return;
+  }
+
+  char* buf = editorGetBuffer();
+  int readResult = file.read(buf, TEXT_BUFFER_SIZE - 1);
+  size_t bytesRead = (readResult > 0) ? (size_t)readResult : 0;
+  buf[bytesRead] = '\0';
+  file.close();
+
+  editorSetCurrentFile(filename);
+  int savedPos = loadBookPosition(filename);
+  editorLoadBufferAtPosition(bytesRead, savedPos);
+
+  char title[MAX_TITLE_LEN];
+  filenameToTitle(filename, title, MAX_TITLE_LEN);
+  editorSetCurrentTitle(title);
+  editorSetUnsavedChanges(false);
+
+  currentState = UIState::BOOK_READER;
+  screenDirty = true;
+  SdMan.sleep();
+  DBG_PRINTF("Loaded book: %s (%d bytes, pos %d)\n", filename, (int)bytesRead, savedPos);
 }

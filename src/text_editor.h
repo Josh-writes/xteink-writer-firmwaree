@@ -5,6 +5,7 @@
 void editorInit();
 void editorClear();
 void editorLoadBuffer(size_t length);  // After filling buffer externally, set length + reset cursor
+void editorLoadBufferAtPosition(size_t length, int cursorPos);  // Same but places cursor at given offset
 
 // Buffer access
 char* editorGetBuffer();

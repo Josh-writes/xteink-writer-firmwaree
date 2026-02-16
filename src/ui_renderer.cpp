@@ -55,6 +55,7 @@ extern Orientation currentOrientation;
 extern int charsPerLine;
 extern char renameBuffer[];
 extern int renameBufferLen;
+extern int selectedBookIndex;
 
 void rendererSetup(GfxRenderer& renderer) {
   renderer.insertFont(FONT_BODY, ns14Family);
@@ -167,8 +168,8 @@ void drawMainMenu(GfxRenderer& renderer, HalGPIO& gpio) {
   renderer.drawCenteredText(FONT_BODY, 30, "MicroSlate", tc, EpdFontFamily::BOLD);
 
   // Menu items
-  static const char* menuItems[] = {"Browse Files", "New Note", "Settings", "Sync"};
-  for (int i = 0; i < 4; i++) {
+  static const char* menuItems[] = {"Browse Files", "New Note", "Settings", "Sync", "Read"};
+  for (int i = 0; i < 5; i++) {
     int yPos = 90 + (i * 45);
     if (i == mainMenuSelection) {
       clippedFillRect(renderer, 5, yPos - 5, sw - 10, 35, tc);
@@ -853,6 +854,102 @@ void drawSyncScreen(GfxRenderer& renderer, HalGPIO& gpio) {
       drawClippedText(renderer, FONT_SMALL, 20, 145, "Enter/Up: Yes   Down/Esc: No", 0, tc);
       break;
     }
+  }
+
+  renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+}
+
+void drawBookBrowser(GfxRenderer& renderer, HalGPIO& gpio) {
+  renderer.clearScreen();
+  int sw = renderer.getScreenWidth();
+  int sh = renderer.getScreenHeight();
+  bool tc = !darkMode;
+
+  if (darkMode) clippedFillRect(renderer, 0, 0, sw, sh, true);
+
+  // Header
+  drawClippedText(renderer, FONT_SMALL, 10, 5, "Books", 0, tc, EpdFontFamily::BOLD);
+  drawBattery(renderer, gpio);
+  clippedLine(renderer, 5, 32, sw - 5, 32, tc);
+
+  int bc = getBookCount();
+  int lineH = 30;
+  int listTop = 42;
+  int footerH = 28;
+  int maxVisible = (sh - listTop - footerH) / lineH;
+  int startIdx = 0;
+  if (bc > maxVisible && selectedBookIndex >= maxVisible) {
+    startIdx = selectedBookIndex - maxVisible + 1;
+  }
+
+  if (bc == 0) {
+    drawClippedText(renderer, FONT_UI, 20, listTop + 14, "No books found.", 0, tc);
+    drawClippedText(renderer, FONT_SMALL, 20, listTop + 36, "Put .txt files in /books/", 0, tc);
+  }
+
+  FileInfo* books = getBookList();
+  for (int i = startIdx; i < bc && (i - startIdx) < maxVisible; i++) {
+    int yPos = listTop + (i - startIdx) * lineH;
+
+    if (i == selectedBookIndex) {
+      clippedFillRect(renderer, 5, yPos - 3, sw - 10, lineH - 1, tc);
+      drawClippedText(renderer, FONT_UI, 15, yPos, books[i].title, sw - 30, !tc);
+    } else {
+      drawClippedText(renderer, FONT_UI, 15, yPos, books[i].title, sw - 30, tc);
+    }
+  }
+
+  // Footer
+  clippedLine(renderer, 5, sh - footerH - 2, sw - 5, sh - footerH - 2, tc);
+  drawClippedText(renderer, FONT_SMALL, 10, sh - footerH + 4,
+                  "Enter:Open  Esc:Back", 0, tc);
+
+  renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+}
+
+void drawBookReader(GfxRenderer& renderer, HalGPIO& gpio) {
+  renderer.clearScreen();
+  int sw = renderer.getScreenWidth();
+  int sh = renderer.getScreenHeight();
+  bool tc = !darkMode;
+
+  if (darkMode) clippedFillRect(renderer, 0, 0, sw, sh, true);
+
+  int lineHeight = renderer.getLineHeight(FONT_BODY);
+  if (lineHeight <= 0) lineHeight = 20;
+  int totalLines = editorGetLineCount();
+  int curLine = editorGetCursorLine();
+
+  // Compute page layout
+  int textAreaTop = 38;
+  int textAreaBottom = sh - 5;
+  int textAreaHeight = textAreaBottom - textAreaTop;
+  int linesPerPage = textAreaHeight / lineHeight;
+  if (linesPerPage < 1) linesPerPage = 1;
+
+  int currentPage = curLine / linesPerPage;
+  int totalPages = (totalLines + linesPerPage - 1) / linesPerPage;
+  if (totalPages < 1) totalPages = 1;
+
+  char pageStr[16];
+  snprintf(pageStr, sizeof(pageStr), "Pg %d/%d", currentPage + 1, totalPages);
+
+  // Header: title left, page center, battery right
+  const char* title = editorGetCurrentTitle();
+  drawClippedText(renderer, FONT_SMALL, 10, 5, title, sw / 2 - 20, tc, EpdFontFamily::BOLD);
+  int ctW = renderer.getTextAdvanceX(FONT_SMALL, pageStr);
+  drawClippedText(renderer, FONT_SMALL, (sw - ctW) / 2, 5, pageStr, ctW + 5, tc);
+  drawBattery(renderer, gpio);
+  clippedLine(renderer, 5, 32, sw - 5, 32, tc);
+
+  editorSetVisibleLines(linesPerPage);
+
+  int pageStart = currentPage * linesPerPage;
+
+  // Draw lines for this page (no cursor — read-only)
+  for (int i = 0; i < linesPerPage && (pageStart + i) < totalLines; i++) {
+    int yPos = textAreaTop + (i * lineHeight);
+    drawEditorLine(renderer, pageStart + i, 10, yPos, sw - 20, tc);
   }
 
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
