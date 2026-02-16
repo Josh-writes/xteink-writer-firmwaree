@@ -32,6 +32,7 @@ HalDisplay display;
 GfxRenderer renderer(display);
 HalGPIO gpio;
 
+
 // --- Persistent settings (NVS) ---
 static Preferences uiPrefs;
 
@@ -51,12 +52,9 @@ int renameBufferLen = 0;
 
 // UI mode flags
 bool darkMode = false;
-RefreshSpeed refreshSpeed = RefreshSpeed::BALANCED;
 bool cleanMode = false;
 bool deleteConfirmPending = false;
 WritingMode writingMode = WritingMode::NORMAL;
-BlindDelay blindDelay = BlindDelay::THREE_SEC;
-unsigned long lastKeystrokeMs = 0;
 
 // --- Screen update ---
 static void updateScreen() {
@@ -66,7 +64,7 @@ static void updateScreen() {
   // Apply orientation
   static Orientation lastOrientation = Orientation::PORTRAIT;
   if (currentOrientation != lastOrientation) {
-    GfxRenderer::Orientation gfxOrient;
+    GfxRenderer::Orientation gfxOrient = GfxRenderer::Portrait;
     switch (currentOrientation) {
       case Orientation::PORTRAIT:      gfxOrient = GfxRenderer::Portrait; break;
       case Orientation::LANDSCAPE_CW:  gfxOrient = GfxRenderer::LandscapeClockwise; break;
@@ -102,7 +100,6 @@ void setup() {
   DBG_INIT();
   DBG_PRINTLN("MicroSlate starting...");
 
-  // Reduce CPU clock — 80MHz is plenty for this workload, saves ~30% active power
   setCpuFrequencyMhz(80);
 
   gpio.begin();
@@ -115,13 +112,11 @@ void setup() {
   uiPrefs.begin("ui_prefs", false);
   currentOrientation = static_cast<Orientation>(uiPrefs.getUChar("orient", 0));
   darkMode = uiPrefs.getBool("darkMode", false);
-  refreshSpeed = static_cast<RefreshSpeed>(uiPrefs.getUChar("refreshSpd", 1)); // default BALANCED
   writingMode = static_cast<WritingMode>(uiPrefs.getUChar("writeMode", 0));
-  blindDelay = static_cast<BlindDelay>(uiPrefs.getUChar("blindDly", 1)); // default THREE_SEC
 
   // Apply saved orientation
   {
-    GfxRenderer::Orientation gfxOrient;
+    GfxRenderer::Orientation gfxOrient = GfxRenderer::Portrait;
     switch (currentOrientation) {
       case Orientation::PORTRAIT:      gfxOrient = GfxRenderer::Portrait; break;
       case Orientation::LANDSCAPE_CW:  gfxOrient = GfxRenderer::LandscapeClockwise; break;
@@ -137,56 +132,28 @@ void setup() {
   bleSetup();
 
   // Enable automatic light sleep between loop iterations.
-  // FreeRTOS tickless idle will put the CPU to sleep whenever delay() yields
-  // the scheduler and no other tasks are runnable.  BLE stays alive, wake
-  // latency is <1ms — invisible to the user.
-  {
-    esp_pm_config_esp32c3_t pm_config = {
-      .max_freq_mhz      = 80,   // Never exceed 80MHz
-      .min_freq_mhz      = 40,   // Drop to 40MHz when idle
-      .light_sleep_enable = true
-    };
-    esp_err_t err = esp_pm_configure(&pm_config);
-    if (err == ESP_OK) {
-      DBG_PRINTLN("[PM] Light sleep enabled (80/40MHz)");
-    } else {
-      DBG_PRINTF("[PM] Light sleep config failed: %d — running at 80MHz\n", err);
-    }
-  }
+  // CONFIG_PM_ENABLE and CONFIG_FREERTOS_USE_TICKLESS_IDLE are compiled into
+  // ESP-IDF via sdkconfig.defaults (framework = arduino, espidf). BLE modem
+  // sleep keeps the radio alive across sleep/wake cycles.
+  esp_pm_config_esp32c3_t pm_config = {
+    .max_freq_mhz = 80,
+    .min_freq_mhz = 10,
+    .light_sleep_enable = true
+  };
+  esp_err_t pm_err = esp_pm_configure(&pm_config);
+  DBG_PRINTF("PM configure: %s\n", esp_err_to_name(pm_err));
 
   // Initialize auto-reconnect to enabled by default
   autoReconnectEnabled = true;
 
   DBG_PRINTLN("MicroSlate ready.");
 
-  // Show a quick wake-up screen to indicate the device is starting up
+  // The display needs one FULL_REFRESH after power-on to initialize its analog
+  // circuits before FAST_REFRESH will work.
   renderer.clearScreen();
-  
-  int sw = renderer.getScreenWidth();
-  int sh = renderer.getScreenHeight();
-  
-  // Title: "MicroSlate"
-  const char* title = "MicroSlate";
-  int titleWidth = renderer.getTextAdvanceX(FONT_BODY, title);
-  int titleX = (sw - titleWidth) / 2;
-  int titleY = sh * 0.35; // 35% down the screen (moved up)
-  renderer.drawText(FONT_BODY, titleX, titleY, title, true, EpdFontFamily::BOLD);
-  
-  // Subtitle: "Starting..."
-  const char* subtitle = "Starting...";
-  int subTitleWidth = renderer.getTextAdvanceX(FONT_UI, subtitle);
-  int subTitleX = (sw - subTitleWidth) / 2;
-  int subTitleY = sh * 0.48; // 48% down the screen (moved up)
-  renderer.drawText(FONT_UI, subTitleX, subTitleY, subtitle, true);
-  
-  // Perform a full display refresh
   renderer.displayBuffer(HalDisplay::FULL_REFRESH);
-  
-  // Small delay to show the startup screen briefly
-  delay(500);
-  
-  // Clear the screen and proceed with normal UI
-  screenDirty = true; // Force a redraw of the main UI
+
+  screenDirty = true;
 }
 
 // Enter deep sleep - matches crosspoint pattern
@@ -309,11 +276,11 @@ static void processPhysicalButtons() {
       break;
 
     case UIState::FILE_BROWSER:
-      if (((btnUp && !btnUpLast) || (btnLeft && !btnLeftLast)) && getFileCount() > 0) {
+      if (((btnUp && !btnUpLast) || (btnRight && !btnRightLast)) && getFileCount() > 0) {
         enqueueKeyEvent(HID_KEY_UP, 0, true);
         enqueueKeyEvent(HID_KEY_UP, 0, false);
       }
-      if (((btnDown && !btnDownLast) || (btnRight && !btnRightLast)) && getFileCount() > 0) {
+      if (((btnDown && !btnDownLast) || (btnLeft && !btnLeftLast)) && getFileCount() > 0) {
         enqueueKeyEvent(HID_KEY_DOWN, 0, true);
         enqueueKeyEvent(HID_KEY_DOWN, 0, false);
       }
@@ -535,9 +502,6 @@ void loop() {
   if (hadActivity) {
     registerActivity();
     lastInputTime = millis();
-    if (currentState == UIState::TEXT_EDITOR) {
-      lastKeystrokeMs = millis();
-    }
   }
 
   // Auto-save: hybrid idle + hard cap for crash protection.
@@ -566,62 +530,23 @@ void loop() {
     }
   }
 
-  // Cooldown-based screen refresh: the e-ink refresh (~430ms) IS the rate limiter.
-  // After each refresh completes, wait a configurable cooldown, then show all
-  // accumulated keystrokes at once. No artificial debounce — characters appear as
-  // fast as the display allows. Longer cooldown = fewer refreshes = more battery savings.
-  static unsigned long lastRefreshDoneMs = 0;
-  unsigned long now = millis();
-
-  // Cooldown only applies to the text editor — all menus refresh instantly for responsiveness
-  bool criticalUpdate = (currentState != UIState::TEXT_EDITOR);
-
-  // Reset blind mode keystroke timer on editor entry so the first render isn't suppressed
-  static UIState prevRefreshState = UIState::MAIN_MENU;
-  if (currentState == UIState::TEXT_EDITOR && prevRefreshState != UIState::TEXT_EDITOR) {
-    lastKeystrokeMs = 0;
-  }
-  prevRefreshState = currentState;
-
-
-
+  // The e-ink hardware refresh (~640ms) is the natural rate limiter — no cooldown needed.
   if (screenDirty) {
-    if (writingMode == WritingMode::BLIND && currentState == UIState::TEXT_EDITOR) {
-      // Blind mode: suppress refresh while typing, refresh after inactivity delay.
-      // Screen stays on whatever was last displayed until the user pauses.
-      if ((now - lastKeystrokeMs) >= blindDelayMs(blindDelay)) {
-        updateScreen();
-        lastRefreshDoneMs = millis();
-      }
-      // else: user is typing — suppress refresh, screenDirty stays true
-    } else {
-      bool cooldownMet = (now - lastRefreshDoneMs >= refreshCooldownMs(refreshSpeed));
-      if (criticalUpdate || cooldownMet) {
-        updateScreen();
-        lastRefreshDoneMs = millis();
-      }
-    }
+    updateScreen();
   }
 
   // Persist UI settings to NVS when they change (NVS write only on change, not every loop)
   static Orientation lastSavedOrientation = currentOrientation;
   static bool lastSavedDarkMode = darkMode;
-  static RefreshSpeed lastSavedRefreshSpeed = refreshSpeed;
   static WritingMode lastSavedWritingMode = writingMode;
-  static BlindDelay lastSavedBlindDelay = blindDelay;
   if (currentOrientation != lastSavedOrientation || darkMode != lastSavedDarkMode
-      || refreshSpeed != lastSavedRefreshSpeed
-      || writingMode != lastSavedWritingMode || blindDelay != lastSavedBlindDelay) {
+      || writingMode != lastSavedWritingMode) {
     uiPrefs.putUChar("orient", static_cast<uint8_t>(currentOrientation));
     uiPrefs.putBool("darkMode", darkMode);
-    uiPrefs.putUChar("refreshSpd", static_cast<uint8_t>(refreshSpeed));
     uiPrefs.putUChar("writeMode", static_cast<uint8_t>(writingMode));
-    uiPrefs.putUChar("blindDly", static_cast<uint8_t>(blindDelay));
     lastSavedOrientation = currentOrientation;
     lastSavedDarkMode = darkMode;
-    lastSavedRefreshSpeed = refreshSpeed;
     lastSavedWritingMode = writingMode;
-    lastSavedBlindDelay = blindDelay;
   }
 
   // Check for idle timeout (skip while WiFi sync is active)
@@ -630,8 +555,8 @@ void loop() {
   }
 
   // Adaptive delay: shorter when active (responsive), longer when idle (saves power).
-  // FreeRTOS tickless idle triggers light sleep during delay(), so longer = more sleep.
-  // 20ms active aligns with BLE connection interval (30-50ms) — catches every keystroke
-  // without polling faster than BLE events arrive. 100ms idle for deeper sleep windows.
+  // With CONFIG_PM_ENABLE + tickless idle compiled in, delay() yields to FreeRTOS which
+  // enters real light sleep when no tasks are runnable. BLE modem sleep keeps the radio
+  // alive. 20ms active aligns with BLE connection interval — 100ms idle for deeper sleep.
   delay((hadActivity || screenDirty) ? 20 : 100);
 }

@@ -1,0 +1,34 @@
+#########################################################################
+# If you edit this file, delete sdkconfig.xteink_x4 to let it rebuild.
+#########################################################################
+
+#
+# Arduino
+#
+CONFIG_AUTOSTART_ARDUINO=y
+CONFIG_FREERTOS_HZ=1000
+
+#
+# Flash
+#
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+#
+# Power management — real light sleep with BLE alive
+#
+CONFIG_PM_ENABLE=y
+CONFIG_FREERTOS_USE_TICKLESS_IDLE=y
+
+#
+# Bluetooth (NimBLE)
+#
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_CTRL_MODEM_SLEEP=y
+CONFIG_BT_CTRL_MODEM_SLEEP_MODE_1=y
+CONFIG_BT_CTRL_LPCLK_SEL_MAIN_XTAL=y
+
+#
+# PHY power down when idle
+#
+CONFIG_ESP_PHY_MAC_BB_PD=y
