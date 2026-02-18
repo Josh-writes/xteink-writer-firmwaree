@@ -24,11 +24,8 @@ uint16_t BatteryMonitor::readMillivolts() const
 
 uint16_t BatteryMonitor::readRawMillivolts() const
 {
-    uint32_t sum = 0;
-    for (int i = 0; i < 16; i++) {
-        sum += analogRead(_adcPin);
-    }
-    return static_cast<uint16_t>(sum / 16);
+    const uint16_t raw = analogRead(_adcPin);
+    return raw;
 }
 
 double BatteryMonitor::readVolts() const
@@ -54,11 +51,7 @@ uint16_t BatteryMonitor::percentageFromMillivolts(uint16_t millivolts)
 
 uint16_t BatteryMonitor::millivoltsFromRawAdc(uint16_t adc_raw)
 {
-    // Calibration data comes from eFuse and never changes — compute once
-    static esp_adc_cal_characteristics_t adc_chars = [](){
-        esp_adc_cal_characteristics_t chars;
-        esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_12, ADC_WIDTH_BIT_12, 1100, &chars);
-        return chars;
-    }();
+    esp_adc_cal_characteristics_t adc_chars;
+    esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_12, ADC_WIDTH_BIT_12, 1100, &adc_chars);
     return esp_adc_cal_raw_to_voltage(adc_raw, &adc_chars);
 }
