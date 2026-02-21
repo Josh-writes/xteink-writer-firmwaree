@@ -17,10 +17,6 @@ uint16_t BatteryMonitor::readPercentage() const
 
 uint16_t BatteryMonitor::readMillivolts() const
 {
-    // Reconfigure before each read — SPI/display activity between reads
-    // can disturb GPIO0's ADC config in the dual framework
-    adc1_config_width(ADC_WIDTH_BIT_12);
-    adc1_config_channel_atten(ADC1_CHANNEL_0, ADC_ATTEN_DB_12);
     const int raw = adc1_get_raw(ADC1_CHANNEL_0);
     const uint32_t mv = millivoltsFromRawAdc(raw);
     return static_cast<uint32_t>(mv * _dividerMultiplier);
@@ -28,8 +24,6 @@ uint16_t BatteryMonitor::readMillivolts() const
 
 uint16_t BatteryMonitor::readRawMillivolts() const
 {
-    adc1_config_width(ADC_WIDTH_BIT_12);
-    adc1_config_channel_atten(ADC1_CHANNEL_0, ADC_ATTEN_DB_12);
     return adc1_get_raw(ADC1_CHANNEL_0);
 }
 
